@@ -1,59 +1,59 @@
 <div align="center">
 
-<h2>JattMusicBot</h2>
+<h1>🎵 Jatt Music Bot</h1>
 
 <b>Telegram Group Calls Streaming Bot</b><br>
-Supports YouTube, Spotify, Resso, Apple Music, SoundCloud and M3U8 links.
+Supports YouTube, Spotify, Apple Music, SoundCloud, Resso and M3U8 links.
 
-<a href="https://github.com/JattDevs/JattMusicBot/stargazers">
-    <img src="https://img.shields.io/github/stars/JattDevs/JattMusicBot?color=blueviolet&logo=github&logoColor=black&style=for-the-badge" alt="Stars"/>
+<br><br>
+
+<a href="https://github.com/hankarivirk/Jatt-Music/stargazers">
+    <img src="https://img.shields.io/github/stars/hankarivirk/Jatt-Music?color=blueviolet&logo=github&logoColor=white&style=for-the-badge" alt="Stars"/>
 </a>
-<a href="https://github.com/JattDevs/JattMusicBot/network/members">
-    <img src="https://img.shields.io/github/forks/JattDevs/JattMusicBot?color=blueviolet&logo=github&logoColor=black&style=for-the-badge" alt="Forks"/>
+<a href="https://github.com/hankarivirk/Jatt-Music/network/members">
+    <img src="https://img.shields.io/github/forks/hankarivirk/Jatt-Music?color=blueviolet&logo=github&logoColor=white&style=for-the-badge" alt="Forks"/>
 </a>
-<a href="https://github.com/JattDevs/JattMusicBot/blob/master/LICENSE">
-    <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License"/>
+<a href="https://github.com/hankarivirk/Jatt-Music/blob/main/LICENSE">
+    <img src="https://img.shields.io/badge/License-MIT-blueviolet?style=for-the-badge" alt="License"/>
 </a>
 <a href="https://www.python.org/">
-    <img src="https://img.shields.io/badge/Written%20in-Python-blue?style=for-the-badge&logo=python" alt="Python"/>
+    <img src="https://img.shields.io/badge/Written%20in-Python-blueviolet?style=for-the-badge&logo=python&logoColor=white" alt="Python"/>
 </a>
-<br>
 
-<img src="https://github.com/JattDevs/JattMusicBot/blob/master/.github/anonx.jpg" width="720" height="auto">
+<br><br>
 
-JattMusicBot lets you stream high-quality and low-latency audio and video playback into telegram group video chats.<br>
-Built with Python, Pyrogram, and Py-TgCalls, it’s optimized for reliability and easy deployment on Heroku, VPS, or Docker.
+> Stream high-quality, low-latency audio & video into Telegram Group Video Chats.<br>
+> Built with **Python**, **Pyrogram**, and **Py-TgCalls** — optimized for reliability and easy deployment.
+
 </div>
 
-<hr>
+---
 
-<h2>🔥 Features</h2>
+## 🔥 Features
 
-- 🎧 Stream low-latency audio in real time to <b>Telegram group video chats</b>
-- 🌐 Supports multiple platforms like <b>YouTube, Spotify, Apple Music, SoundCloud</b>
-- ⚡ Advanced queue management with auto-play
-- ⚙️ Easy deployment — works on Local, VPS, or Heroku
-- ❤️ Built with Python
-<hr>
+- 🎧 Real-time low-latency audio streaming in **Telegram Group Video Chats**
+- 🌐 Multi-platform support — **YouTube, Spotify, Apple Music, SoundCloud, Resso**
+- 📋 Advanced queue management with auto-play
+- ⚡ Fast and lightweight — minimal resource usage
+- 🐳 Easy deployment on **Local, VPS, Docker, or Heroku**
+- ❤️ Fully open-source and built with Python
 
-<h2>☁️ Manual Deployment</h2>
+---
 
-<h3>✔️ Prerequisites</h3>
+## ☁️ Deployment
 
-- <a href="https://www.python.org">Python 3.10+</a> installed  
-- <a href="https://deno.com/">deno</a> & <a href="https://ffmpeg.org/">ffmpeg</a> installed on your system  
-- Required variables mentioned in <a href="https://github.com/JattDevs/JattMusicBot/blob/master/sample.env">sample.env</a>
+### ✔️ Prerequisites
 
-<details>
-    <summary>
-        <h3>Local / VPS Setup</h3>
-    </summary>
+- [Python 3.10+](https://www.python.org) installed
+- [ffmpeg](https://ffmpeg.org/) installed on your system
+- Required variables from [`sample.env`](https://github.com/hankarivirk/Jatt-Music/blob/main/sample.env)
 
+---
 
-<h4>🐧 Linux/macOS</h4>
+### 🐧 Linux / macOS
 
 ```bash
-git clone https://github.com/JattDevs/JattMusicBot && cd JattMusicBot
+git clone https://github.com/hankarivirk/Jatt-Music && cd Jatt-Music
 
 # Install uv
 curl -Ls https://astral.sh/uv/install.sh | sh
@@ -62,18 +62,20 @@ export PATH="$HOME/.local/bin:$PATH"
 # Install dependencies
 uv sync --frozen
 
-# Rename and configure environment variables
-mv sample.env .env
-# Edit .env with your credentials
+# Configure environment variables
+cp sample.env .env
+nano .env  # Fill in your credentials
 
 # Start the bot
 bash start
 ```
 
-<h4>🪟 Windows (PowerShell)</h4>
+---
 
-```bash
-git clone https://github.com/JattDevs/JattMusicBot && cd JattMusicBot
+### 🪟 Windows (PowerShell)
+
+```powershell
+git clone https://github.com/hankarivirk/Jatt-Music && cd Jatt-Music
 
 # Install uv
 irm https://astral.sh/uv/install.ps1 | iex
@@ -81,107 +83,98 @@ irm https://astral.sh/uv/install.ps1 | iex
 # Install dependencies
 uv sync --frozen
 
-# Rename and configure environment variables
-mv sample.env .env
+# Configure environment variables
+cp sample.env .env
 # Edit .env with your credentials
 
 # Start the bot
 uv run python3 -m jatt
-
-> ⭐ or use Git Bash or WSL to run `bash start`.
 ```
 
-</details>
+> 💡 Windows users can also use **Git Bash** or **WSL** to run `bash start`.
 
-<details>
-    <summary>
-        <h3>Deploy to Heroku</h3>
-    </summary>
+---
 
-> Click on the button below to deploy on Heroku<br>
-    <a href="https://dashboard.heroku.com/new?template=https://github.com/JattDevs/JattMusicBot">
-        <img src="https://img.shields.io/badge/Deploy%20On%20Heroku-black?style=for-the-badge&logo=heroku"/>
-    </a>
-</details>
+### 🚀 Deploy to Heroku
 
-<hr>
+> Click the button below to deploy instantly on Heroku:
 
-<h2>⚙️ Configuration</h2>
+[![Deploy on Heroku](https://img.shields.io/badge/Deploy%20On%20Heroku-blueviolet?style=for-the-badge&logo=heroku)](https://dashboard.heroku.com/new?template=https://github.com/hankarivirk/Jatt-Music)
 
-Edit <code>.env</code> (or set variables in your hosting environment):
-<details>
-    <summary>Here's an example of the .env file</summary>
+---
+
+## ⚙️ Configuration
+
+Copy `sample.env` to `.env` and fill in your values:
 
 ```env
 API_ID=123456
 API_HASH=abcdef1234567890
 BOT_TOKEN=123456:ABC-DEF
-OWNER_ID=123456789
+OWNER_ID=8514683546
 LOGGER_ID=-1001234567890
-MONGO_URL=mongodb+srv://
+MONGO_URL=mongodb+srv://...
 SESSION=BQgfh...AA
 ```
 
-> 📝 Check <a href="https://github.com/JattDevs/JattMusicBot/blob/master/config.py">config.py</a> for all available options.
-</details>
+> 📝 See [`config.py`](https://github.com/hankarivirk/Jatt-Music/blob/main/config.py) for all available options.
 
-<hr>
+---
 
-<h2>🧐 Usage</h2>
+## 🧐 Usage
 
-1. Add the bot to your Telegram group.  
-2. Promote it to <b>admin</b> with invite users permission.  
-3. Use commands in the chat to control playback:
-<details>
-    <summary>Commands overview</summary>
-    <pre>
-/play [song name or link] -> Play audio in the videochat
-/vplay [song name or link] -> Play video in the videochat
-/pause -> Pause playback
-/resume -> Resume playback
-/skip -> Skip to next track
-/stop -> Stop playback
-/seek -> Seeks the stream
-/queue -> Show queue
-    </pre>
-</details>
+1. Add the bot to your Telegram group.
+2. Promote it to **Admin** with **Invite Users** permission.
+3. Use the commands below to control playback:
 
-<hr>
+```
+/play  [song name or link]  →  Play audio in the video chat
+/vplay [song name or link]  →  Play video in the video chat
+/pause                      →  Pause playback
+/resume                     →  Resume playback
+/skip                       →  Skip to next track
+/stop                       →  Stop playback
+/seek                       →  Seek to a position
+/queue                      →  Show current queue
+```
 
-<h2>❤️ Contributing</h2>
+---
 
-Contributions are welcome!
+## ❤️ Contributing
 
-1. Fork the repository.  
-2. Create your branch: <code>git checkout -b feature/new</code>.  
-4. Commit changes: <code>git commit -m 'New feature'</code>.  
-5. Push: <code>git push origin feature/new</code>
-6. Open a Pull Request.
+Contributions are always welcome!
 
-<hr>
+1. Fork the repository.
+2. Create your branch: `git checkout -b feature/your-feature`
+3. Commit your changes: `git commit -m 'Add your feature'`
+4. Push to the branch: `git push origin feature/your-feature`
+5. Open a Pull Request.
 
-<h2>🗒️ License</h2>
+---
 
-This project is licensed under the <b>MIT License</b> — see <a href="https://github.com/JattDevs/JattMusicBot/blob/master/LICENSE">LICENSE</a> for details.
+## 🗒️ License
 
-<hr>
+This project is licensed under the **MIT License** — see [LICENSE](https://github.com/hankarivirk/Jatt-Music/blob/main/LICENSE) for details.
 
-<h2>🤞 Updates and support</h2>
+---
 
-- <a href="https://fallenx.t.me">Updates channel</a>
-- <a href="https://DevilsHeavenMF.t.me">Support group</a>
+## 🤝 Support & Updates
 
-<hr>
+- 📢 [Updates Channel](https://t.me/HankariMusicUpdate)
+- 💬 [Support Group](https://t.me/HankariMusicSupport)
+- 👤 [Owner](https://t.me/HankariVirk)
 
-<h2>👀 Acknowledgements</h2>
+---
 
-- Inspired by other open-source Telegram music bots.
-- Thanks to all the <a href="https://github.com/JattDevs/JattMusicBot/graphs/contributors">contributors</a>.
+## 👀 Acknowledgements
 
-<hr>
+- Inspired by open-source Telegram music bots and the amazing developer community.
+- Thanks to all [contributors](https://github.com/hankarivirk/Jatt-Music/graphs/contributors) who helped shape this project.
+
+---
 
 <div align="center">
 
-⭐ Enjoying the tunes? <b>Star the repo</b> — feedback keeps the rhythm going!
+⭐ **Enjoying the tunes? Star the repo** — it keeps the rhythm going!
 
 </div>
