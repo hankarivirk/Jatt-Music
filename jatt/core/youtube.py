@@ -16,7 +16,7 @@ from py_yt import Playlist, VideosSearch
 from jatt import logger
 from jatt.helpers import Track, utils
 
-MAX_DOWNLOADS = 30  # max files to keep in downloads/
+MAX_DOWNLOADS = 30
 
 
 class YouTube:
@@ -43,7 +43,6 @@ class YouTube:
             for file in os.listdir(self.cookie_dir):
                 if file.endswith(".txt"):
                     path = f"{self.cookie_dir}/{file}"
-                    # Validate it's a proper Netscape cookies file
                     try:
                         with open(path, "r", errors="ignore") as f:
                             first_line = f.readline().strip()
@@ -70,7 +69,6 @@ class YouTube:
                 async with session.get(link) as resp:
                     resp.raise_for_status()
                     content = await resp.text()
-                    # Auto-fix missing Netscape header
                     if "Netscape HTTP Cookie File" not in content:
                         content = "# Netscape HTTP Cookie File\n" + content
                     with open(f"{self.cookie_dir}/{name}.txt", "w") as fw:
@@ -141,7 +139,7 @@ class YouTube:
 
     async def download(self, video_id: str, video: bool = False) -> str | None:
         url = self.base + video_id
-        ext = "mp4" if video else "webm"
+        ext = "mp4" if video else "opus"
         filename = f"downloads/{video_id}.{ext}"
 
         if Path(filename).exists():
