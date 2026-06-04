@@ -2,9 +2,9 @@
 # Licensed under the MIT License.
 # This file is part of JattMusicBot
 
-
 import os
 import re
+import glob
 import yt_dlp
 import random
 import asyncio
@@ -16,6 +16,8 @@ from py_yt import Playlist, VideosSearch
 from jatt import logger
 from jatt.helpers import Track, utils
 
+MAX_DOWNLOADS = 30  # max files to keep in downloads/
+
 
 class YouTube:
     def __init__(self):
@@ -24,6 +26,7 @@ class YouTube:
         self.checked = False
         self.cookie_dir = "jatt/cookies"
         self.warned = False
+        self.sem = asyncio.Semaphore(2)
         self.regex = re.compile(
             r"(https?://)?(www\.|m\.|music\.)?"
             r"(youtube\.com/(watch\?v=|shorts/|playlist\?list=)|youtu\.be/)"
@@ -39,7 +42,17 @@ class YouTube:
         if not self.checked:
             for file in os.listdir(self.cookie_dir):
                 if file.endswith(".txt"):
-                    self.cookies.append(f"{self.cookie_dir}/{file}")
+                    path = f"{self.cookie_dir}/{file}"
+                    # Validate it's a proper Netscape cookies file
+                    try:
+                        with open(path, "r", errors="ignore") as f:
+                            first_line = f.readline().strip()
+                        if "Netscape" in first_line or first_line.startswith("#"):
+                            self.cookies.append(path)
+                        else:
+                            logger.warning(f"Skipping invalid cookie file: {file}")
+                    except Exception:
+                        pass
             self.checked = True
         if not self.cookies:
             if not self.warned:
@@ -56,9 +69,25 @@ class YouTube:
                 link = "https://batbin.me/raw/" + name
                 async with session.get(link) as resp:
                     resp.raise_for_status()
-                    with open(f"{self.cookie_dir}/{name}.txt", "wb") as fw:
-                        fw.write(await resp.read())
+                    content = await resp.text()
+                    # Auto-fix missing Netscape header
+                    if "Netscape HTTP Cookie File" not in content:
+                        content = "# Netscape HTTP Cookie File\n" + content
+                    with open(f"{self.cookie_dir}/{name}.txt", "w") as fw:
+                        fw.write(content)
         logger.info(f"Cookies saved in {self.cookie_dir}.")
+
+    def _cleanup_downloads(self):
+        files = sorted(
+            glob.glob("downloads/*"),
+            key=os.path.getctime
+        )
+        if len(files) > MAX_DOWNLOADS:
+            for f in files[:len(files) - MAX_DOWNLOADS]:
+                try:
+                    os.remove(f)
+                except Exception:
+                    pass
 
     def valid(self, url: str) -> bool:
         return bool(re.match(self.regex, url))
@@ -128,18 +157,27 @@ class YouTube:
             "overwrites": False,
             "nocheckcertificate": True,
             "cookiefile": cookie,
+            "concurrent_fragment_downloads": 1,
+            "buffersize": 1024,
+            "http_chunk_size": 10485760,
+            "socket_timeout": 10,
+            "retries": 3,
         }
 
         if video:
             ydl_opts = {
                 **base_opts,
-                "format": "(bestvideo[height<=?720][width<=?1280][ext=mp4])+(bestaudio)",
+                "format": "(bestvideo[height<=?720][width<=?1280][ext=mp4]/bestvideo[height<=?720])+(bestaudio[ext=m4a]/bestaudio)/best",
                 "merge_output_format": "mp4",
             }
         else:
             ydl_opts = {
                 **base_opts,
-                "format": "bestaudio[ext=webm][acodec=opus]",
+                "format": "bestaudio/best",
+                "postprocessors": [{
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "opus",
+                }],
             }
 
         def _download():
@@ -153,4 +191,8 @@ class YouTube:
                     return None
             return filename
 
-        return await asyncio.to_thread(_download)
+        async with self.sem:
+            result = await asyncio.to_thread(_download)
+
+        self._cleanup_downloads()
+        return result
