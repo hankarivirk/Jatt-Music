@@ -69,3 +69,41 @@ class Queue:
     def clear(self, chat_id: int) -> None:
         """Clear the entire queue."""
         self.queues[chat_id].clear()
+
+    def clear_keep_current(self, chat_id: int) -> int:
+        """Clear all queued tracks except the currently playing one. Returns count removed."""
+        q = self.queues[chat_id]
+        if not q:
+            return 0
+        current = q[0]
+        removed = len(q) - 1
+        self.queues[chat_id] = deque([current])
+        return removed
+
+    def move(self, chat_id: int, from_pos: int, to_pos: int) -> bool:
+        """Move a queued track from from_pos to to_pos (1-indexed, excludes currently playing).
+        Returns False if positions are invalid or equal."""
+        q = self.queues[chat_id]
+        size = len(q)
+        # Position 0 = currently playing; queued items are 1 .. size-1
+        if from_pos < 1 or from_pos >= size or to_pos < 1 or to_pos >= size:
+            return False
+        if from_pos == to_pos:
+            return False
+        lst = list(q)
+        item = lst.pop(from_pos)
+        lst.insert(to_pos, item)
+        self.queues[chat_id] = deque(lst)
+        return True
+
+    def remove_item(self, chat_id: int, pos: int) -> "MediaItem | None":
+        """Remove and return the queued track at pos (1-indexed, excludes currently playing).
+        Returns None if pos is out of range."""
+        q = self.queues[chat_id]
+        size = len(q)
+        if pos < 1 or pos >= size:
+            return None
+        lst = list(q)
+        item = lst.pop(pos)
+        self.queues[chat_id] = deque(lst)
+        return item

@@ -4,6 +4,7 @@
 
 
 import asyncio
+from functools import wraps
 
 from pyrogram import enums, errors, types
 
@@ -12,6 +13,7 @@ from jatt.helpers import utils
 
 
 def checkUB(play):
+    @wraps(play)
     async def wrapper(_, m: types.Message):
         if not m.from_user:
             return await m.reply_text(m.lang["play_user_invalid"])
