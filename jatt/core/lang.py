@@ -49,7 +49,12 @@ class Language:
 
     async def get_lang(self, chat_id: int) -> dict:
         lang_code = await db.get_lang(chat_id)
-        return self.languages[lang_code]
+        en = self.languages.get("en", {})
+        other = self.languages.get(lang_code, {})
+        if lang_code == "en" or not other:
+            return en
+        # Merge: English as base, chat language overrides — missing keys fall back to EN
+        return {**en, **other}
 
     def get_languages(self) -> dict:
         files = {f.stem for f in self.lang_dir.glob("*.json")}
@@ -83,7 +88,12 @@ class Language:
                     return await chat.leave()
 
                 lang_code = await db.get_lang(chat.id)
-                lang_dict = self.languages[lang_code]
+                en = self.languages.get("en", {})
+                other = self.languages.get(lang_code, {})
+                if lang_code == "en" or not other:
+                    lang_dict = en
+                else:
+                    lang_dict = {**en, **other}
 
                 setattr(fallen, "lang", lang_dict)
                 try:

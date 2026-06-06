@@ -16,7 +16,16 @@ class MongoDB:
         """
         Initialize the MongoDB connection.
         """
-        self.mongo = AsyncMongoClient(config.MONGO_URL, serverSelectionTimeoutMS=12500)
+        self.mongo = AsyncMongoClient(
+            config.MONGO_URL,
+            serverSelectionTimeoutMS=12500,
+            maxPoolSize=20,
+            minPoolSize=2,
+            connectTimeoutMS=5000,
+            socketTimeoutMS=15000,
+            retryWrites=True,
+            retryReads=True,
+        )
         self.db = self.mongo.Anon
 
         self.admin_list = {}
@@ -43,6 +52,10 @@ class MongoDB:
 
         self.users = []
         self.usersdb = self.db.users
+
+        self.historydb = self.db.history
+
+        self.prefix: dict[int, str] = {}
 
     async def connect(self) -> None:
         """Check if we can connect to the database.
@@ -312,6 +325,49 @@ class MongoDB:
             self.users.extend([user["_id"] async for user in self.usersdb.find()])
         return self.users
 
+
+    # HISTORY METHODS
+    async def add_history(
+        self,
+        chat_id: int,
+        title: str,
+        url: str,
+        duration: str,
+        user: str,
+    ) -> None:
+        """Push a played track to the per-chat history (capped at 10 entries)."""
+        entry = {"title": title, "url": url, "duration": duration, "user": user}
+        await self.historydb.update_one(
+            {"_id": chat_id},
+            {"$push": {"tracks": {"$each": [entry], "$slice": -10}}},
+            upsert=True,
+        )
+
+    async def get_history(self, chat_id: int) -> list:
+        """Return the last 10 played tracks for a chat (newest first)."""
+        doc = await self.historydb.find_one({"_id": chat_id})
+        if not doc:
+            return []
+        return list(reversed(doc.get("tracks", [])))
+
+    async def clear_history(self, chat_id: int) -> None:
+        await self.historydb.delete_one({"_id": chat_id})
+
+    # PREFIX METHODS
+    async def get_prefix(self, chat_id: int) -> str:
+        """Return the custom command prefix for a chat (default: '/')."""
+        if chat_id not in self.prefix:
+            doc = await self.chatsdb.find_one({"_id": chat_id})
+            self.prefix[chat_id] = doc.get("prefix", "/") if doc else "/"
+        return self.prefix[chat_id]
+
+    async def set_prefix(self, chat_id: int, prefix: str) -> None:
+        self.prefix[chat_id] = prefix
+        await self.chatsdb.update_one(
+            {"_id": chat_id},
+            {"$set": {"prefix": prefix}},
+            upsert=True,
+        )
 
     async def migrate_coll(self) -> None:
         logger.info("Migrating users and chats from old collections...")

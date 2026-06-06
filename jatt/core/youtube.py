@@ -16,7 +16,11 @@ from py_yt import Playlist, VideosSearch
 from jatt import logger
 from jatt.helpers import Track, utils
 
-MAX_DOWNLOADS = 30
+MAX_DOWNLOADS = 15          # max files to keep on disk
+MAX_CACHE_MB  = 200         # hard cap: delete oldest files if folder exceeds this
+
+# Audio extensions yt-dlp may produce (no postprocessor, raw download)
+_AUDIO_EXTS = ("webm", "opus", "m4a", "mp3")
 
 
 class YouTube:
@@ -26,7 +30,8 @@ class YouTube:
         self.checked = False
         self.cookie_dir = "jatt/cookies"
         self.warned = False
-        self.sem = asyncio.Semaphore(2)
+        # ── Increase to 5 concurrent downloads (was 2) ──
+        self.sem = asyncio.Semaphore(5)
         self.regex = re.compile(
             r"(https?://)?(www\.|m\.|music\.)?"
             r"(youtube\.com/(watch\?v=|shorts/|playlist\?list=)|youtu\.be/)"
@@ -76,16 +81,27 @@ class YouTube:
         logger.info(f"Cookies saved in {self.cookie_dir}.")
 
     def _cleanup_downloads(self):
-        files = sorted(
-            glob.glob("downloads/*"),
-            key=os.path.getctime
-        )
+        files = sorted(glob.glob("downloads/*"), key=os.path.getctime)
+
+        # Count-based: keep at most MAX_DOWNLOADS files
         if len(files) > MAX_DOWNLOADS:
             for f in files[:len(files) - MAX_DOWNLOADS]:
                 try:
                     os.remove(f)
                 except Exception:
                     pass
+            files = sorted(glob.glob("downloads/*"), key=os.path.getctime)
+
+        # Size-based: if folder exceeds MAX_CACHE_MB, delete oldest until under limit
+        total_mb = sum(os.path.getsize(f) for f in files if os.path.isfile(f)) / (1024 * 1024)
+        while total_mb > MAX_CACHE_MB and files:
+            try:
+                removed_size = os.path.getsize(files[0]) / (1024 * 1024)
+                os.remove(files[0])
+                total_mb -= removed_size
+            except Exception:
+                pass
+            files.pop(0)
 
     def valid(self, url: str) -> bool:
         return bool(re.match(self.regex, url))
@@ -139,13 +155,22 @@ class YouTube:
 
     async def download(self, video_id: str, video: bool = False) -> str | None:
         url = self.base + video_id
-        ext = "mp4" if video else "opus"
-        filename = f"downloads/{video_id}.{ext}"
+        os.makedirs("downloads", exist_ok=True)
 
-        if Path(filename).exists():
-            return filename
+        # ── Cache hit: check all possible audio extensions ──────────────
+        if video:
+            cached = f"downloads/{video_id}.mp4"
+            if Path(cached).exists():
+                return cached
+        else:
+            for ext in _AUDIO_EXTS:
+                cached = f"downloads/{video_id}.{ext}"
+                if Path(cached).exists():
+                    return cached
 
         cookie = self.get_cookies()
+
+        # ── Shared yt-dlp options (tuned for speed) ──────────────────────
         base_opts = {
             "outtmpl": "downloads/%(id)s.%(ext)s",
             "quiet": True,
@@ -155,39 +180,48 @@ class YouTube:
             "overwrites": False,
             "nocheckcertificate": True,
             "cookiefile": cookie,
-            "concurrent_fragment_downloads": 1,
-            "buffersize": 1024,
-            "http_chunk_size": 10485760,
-            "socket_timeout": 10,
-            "retries": 3,
+            # ── Speed knobs ──
+            "concurrent_fragment_downloads": 4,   # was 1  → 4x faster on DASH
+            "buffersize": 16384,                   # was 1024
+            "http_chunk_size": 10485760,           # 10 MB chunks
+            "socket_timeout": 15,
+            "retries": 5,
+            "fragment_retries": 5,
+            "noresizebuffer": True,
+            "file_access_retries": 3,
         }
 
         if video:
             ydl_opts = {
                 **base_opts,
-                "format": "(bestvideo[height<=?720][width<=?1280][ext=mp4]/bestvideo[height<=?720])+(bestaudio[ext=m4a]/bestaudio)/best",
+                "format": (
+                    "(bestvideo[height<=?720][width<=?1280][ext=mp4]"
+                    "/bestvideo[height<=?720])"
+                    "+(bestaudio[ext=m4a]/bestaudio)/best"
+                ),
                 "merge_output_format": "mp4",
             }
         else:
+            # ── NO FFmpegExtractAudio postprocessor ──────────────────────
+            # Download raw webm/opus directly from YouTube.
+            # Skips the FFmpeg re-encode step → saves 2-5 seconds per song.
             ydl_opts = {
                 **base_opts,
-                "format": "bestaudio/best",
-                "postprocessors": [{
-                    "key": "FFmpegExtractAudio",
-                    "preferredcodec": "opus",
-                }],
+                "format": "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio",
             }
 
-        def _download():
+        def _download() -> str | None:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 try:
-                    ydl.download([url])
+                    info = ydl.extract_info(url, download=True)
+                    if info:
+                        return ydl.prepare_filename(info)
                 except (yt_dlp.utils.DownloadError, yt_dlp.utils.ExtractorError):
                     return None
                 except Exception as ex:
                     logger.warning("Download failed: %s", ex)
                     return None
-            return filename
+            return None
 
         async with self.sem:
             result = await asyncio.to_thread(_download)
