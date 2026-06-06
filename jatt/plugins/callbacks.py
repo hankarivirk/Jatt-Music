@@ -80,7 +80,7 @@ async def _controls(_, query: types.CallbackQuery):
             await app.delete_messages(
                 chat_id=chat_id, message_ids=[m_id, media.message_id], revoke=True
             )
-            media.message_id = None
+            media.message_id = 0  # FIX: was None, must be int
         except Exception:
             pass
 
@@ -106,16 +106,16 @@ async def _controls(_, query: types.CallbackQuery):
         if action in ["skip", "replay", "stop"]:
             await query.message.reply_text(reply, quote=False)
             await query.message.delete()
-        else:
-            mtext = re.sub(
-                r"\n\n<blockquote>.*?</blockquote>",
-                "",
-                query.message.caption.html or query.message.text.html,
-                flags=re.DOTALL,
-            )
-            keyboard = buttons.controls(
-                chat_id, status=status if action != "resume" else None
-            )
+            return  # FIX: message is gone; editing would raise and waste an API call
+        mtext = re.sub(
+            r"\n\n<blockquote>.*?</blockquote>",
+            "",
+            query.message.caption.html or query.message.text.html,
+            flags=re.DOTALL,
+        )
+        keyboard = buttons.controls(
+            chat_id, status=status if action != "resume" else None
+        )
         await query.edit_message_text(
             f"{mtext}\n\n<blockquote>{reply}</blockquote>", reply_markup=keyboard
         )
