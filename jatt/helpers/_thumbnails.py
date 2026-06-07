@@ -1,218 +1,200 @@
-# 🎵 Jatt Music Bot — Now Playing Card Generator
-# Professional Dark Theme  ·  Deep Purple & Gold
-
-import gc
-import os
-import re
-import aiohttp
+import gc, os, re, aiohttp
 from PIL import (Image, ImageDraw, ImageEnhance,
                  ImageFilter, ImageFont, ImageOps)
-
 from jatt import config
 from jatt.helpers._dataclass import Track
 
-# ── Palette ──────────────────────────────────────────────────────────────────
-PURPLE_DARK   = (22,  8, 42)          # deep background tint
-GOLD          = (255, 195, 40)         # primary gold accent
-GOLD_DIM      = (200, 150, 30)         # dimmer gold for badges
-WHITE         = (255, 255, 255)
-PURPLE_LIGHT  = (185, 130, 255)        # secondary text
-TEXT_DIM      = (180, 180, 200)        # meta-info text
-BAR_BG        = (70,  35, 110)         # progress-bar background
-BAR_FG        = (195, 130, 255)        # progress-bar fill
-BADGE_BG      = (60,  25, 100)         # type-badge background
-SHADOW_COLOR  = (0, 0, 0)             # drop-shadow for art
+# ── Brand palette ─────────────────────────────────────────────────────────────
+BG_BASE      = (8,  4, 20)
+ACCENT       = (160, 80, 255)
+GOLD         = (255, 185, 30)
+GOLD_DIM     = (190, 135, 20)
+WHITE        = (255, 255, 255)
+TEXT_SEC     = (165, 145, 210)
+TEXT_DIM     = (110, 95, 150)
+BAR_TRACK    = (40, 20, 70)
+BAR_FILL     = (160, 80, 255)
+SHADOW       = (0, 0, 0)
+GLOW         = (140, 60, 240, 60)
 
-
-def _strip_html(text: str) -> str:
-    """Strip HTML tags and return plain text."""
-    return re.sub(r"<[^>]+>", "", text or "")
+_strip = lambda t: re.sub(r"<[^>]+>", "", t or "")
 
 
 class Thumbnail:
-    # Album-art canvas size — 960×540 keeps quality high while using 44 % less
-    # RAM per generation than 1280×720 (important for Railway's 512 MB limit).
-    ART_W = 330
-    ART_H = 330
-    ART_R = 20
+    W, H   = 960, 540
     CANVAS = (960, 540)
+    ART_D  = 280          # album art diameter (circle)
+    ART_X  = 645          # circle centre-x
+    ART_Y  = 240          # circle centre-y
 
     def __init__(self):
-        self.font_title   = ImageFont.truetype("jatt/helpers/Raleway-Bold.ttf", 36)
-        self.font_title2  = ImageFont.truetype("jatt/helpers/Raleway-Bold.ttf", 30)
-        self.font_sub     = ImageFont.truetype("jatt/helpers/Inter-Light.ttf",  24)
-        self.font_meta    = ImageFont.truetype("jatt/helpers/Inter-Light.ttf",  21)
-        self.font_badge   = ImageFont.truetype("jatt/helpers/Inter-Light.ttf",  19)
+        R = "jatt/helpers/Raleway-Bold.ttf"
+        I = "jatt/helpers/Inter-Light.ttf"
+        self.f_title  = ImageFont.truetype(R, 34)
+        self.f_title2 = ImageFont.truetype(R, 28)
+        self.f_sub    = ImageFont.truetype(I, 22)
+        self.f_meta   = ImageFont.truetype(I, 19)
+        self.f_badge  = ImageFont.truetype(I, 17)
+        self.f_tiny   = ImageFont.truetype(I, 15)
         self.session: aiohttp.ClientSession | None = None
 
-    # ── Session ───────────────────────────────────────────────────────────────
-    async def start(self) -> None:
-        self.session = aiohttp.ClientSession()
+    async def start(self):  self.session = aiohttp.ClientSession()
+    async def close(self):
+        if self.session: await self.session.close()
 
-    async def close(self) -> None:
-        if self.session:
-            await self.session.close()
-
-    # ── Helpers ───────────────────────────────────────────────────────────────
-    async def _fetch(self, path: str, url: str) -> str:
-        async with self.session.get(url) as resp:
-            with open(path, "wb") as f:
-                f.write(await resp.read())
+    async def _fetch(self, path, url):
+        async with self.session.get(url) as r:
+            open(path, "wb").write(await r.read())
         return path
 
     @staticmethod
-    def _make_art(src: str, w: int, h: int, radius: int) -> Image.Image:
-        """Open, crop-fit, and round-corner an album-art image."""
-        art = ImageOps.fit(
-            Image.open(src).convert("RGBA"),
-            (w, h),
-            method=Image.Resampling.LANCZOS,
-            centering=(0.5, 0.5),
-        )
-        mask = Image.new("L", (w, h), 0)
-        ImageDraw.Draw(mask).rounded_rectangle([(0, 0), (w, h)], radius=radius, fill=255)
+    def _circle_art(src, d):
+        art = ImageOps.fit(Image.open(src).convert("RGBA"), (d, d),
+                           method=Image.Resampling.LANCZOS)
+        mask = Image.new("L", (d, d), 0)
+        ImageDraw.Draw(mask).ellipse([(0,0),(d,d)], fill=255)
         art.putalpha(mask)
         return art
 
     @staticmethod
-    def _left_gradient(size: tuple[int, int]) -> Image.Image:
-        """Dark left-side gradient for text legibility."""
+    def _gradient_bg(size, blur_src):
         W, H = size
-        grad = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(grad)
-        limit = 580
-        for x in range(limit):
-            t = x / limit
-            alpha = int(185 * (1 - t ** 2))
-            draw.line([(x, 0), (x, H)], fill=(0, 0, 0, alpha))
-        return grad
+        base = Image.open(blur_src).convert("RGBA").resize((W, H), Image.Resampling.LANCZOS)
+        dark = ImageEnhance.Brightness(base.filter(ImageFilter.GaussianBlur(28))).enhance(0.22)
+        tint = Image.new("RGBA", (W, H), (*BG_BASE, 185))
+        bg   = Image.alpha_composite(dark.convert("RGBA"), tint)
+        # Left-to-right gradient overlay: opaque left, transparent at 65%
+        grad = Image.new("RGBA", (W, H), (0,0,0,0))
+        d    = ImageDraw.Draw(grad)
+        for x in range(int(W * 0.68)):
+            a = int(170 * (1 - (x / (W * 0.68)) ** 1.8))
+            d.line([(x,0),(x,H)], fill=(0,0,0,a))
+        return Image.alpha_composite(bg, grad)
 
     @staticmethod
-    def _wrap_title(title: str, max_line: int = 30) -> tuple[str, str]:
-        """Split a long title into ≤2 lines."""
-        if len(title) <= max_line:
-            return title, ""
-        # Try to break at last space before limit
-        cut = title[:max_line].rfind(" ")
-        if cut == -1:
-            cut = max_line
-        l1 = title[:cut].rstrip()
-        l2 = title[cut:].strip()
-        if len(l2) > max_line:
-            l2 = l2[:max_line - 1] + "…"
-        return l1, l2
+    def _wrap(text, limit=28):
+        if len(text) <= limit:
+            return text, ""
+        cut = text[:limit].rfind(" ")
+        cut = cut if cut > 0 else limit
+        return text[:cut].rstrip(), text[cut:].strip()[:limit]
 
-    # ── Main generator ────────────────────────────────────────────────────────
-    async def generate(self, song: Track, size: tuple[int, int] = CANVAS) -> str:
+    async def generate(self, song: Track, size=(960, 540)) -> str:
         try:
             W, H = size
             os.makedirs("cache", exist_ok=True)
-            temp   = f"cache/temp_{song.id}.jpg"
-            output = f"cache/{song.id}.png"
+            tmp = f"cache/tmp_{song.id}.jpg"
+            out = f"cache/{song.id}.png"
+            if os.path.exists(out): return out
 
-            if os.path.exists(output):
-                return output
-
-            await self._fetch(temp, song.thumbnail)
-
-            # ── Background: blur + darken + purple tint ──────────────────────
-            raw  = Image.open(temp).convert("RGBA").resize(size, Image.Resampling.LANCZOS)
-            blur = raw.filter(ImageFilter.GaussianBlur(22))
-            dark = ImageEnhance.Brightness(blur).enhance(0.28)
-            tint = Image.new("RGBA", size, (*PURPLE_DARK, 155))
-            bg   = Image.alpha_composite(dark.convert("RGBA"), tint)
-
-            # ── Left gradient overlay ────────────────────────────────────────
-            bg = Image.alpha_composite(bg, self._left_gradient(size))
-
+            await self._fetch(tmp, song.thumbnail)
+            bg   = self._gradient_bg(size, tmp)
             draw = ImageDraw.Draw(bg)
 
-            # ── Gold accent bars ─────────────────────────────────────────────
-            draw.rectangle([(0, 0), (W, 5)], fill=GOLD)
-            draw.rectangle([(0, H - 4), (W, H)], fill=GOLD)
+            # ── Gold top bar + branding ───────────────────────────────────────
+            draw.rectangle([(0,0),(W,4)], fill=GOLD)
+            draw.text((30, 14), "JATT MUSIC", font=self.f_badge, fill=GOLD)
 
-            # ── Watermark ────────────────────────────────────────────────────
-            draw.text((28, 14), "🎵  JATT MUSIC BOT", font=self.font_badge, fill=GOLD)
+            # ── NOW PLAYING badge (top-right area, left of art) ───────────────
+            badge = "▶  NOW PLAYING"
+            bw = int(draw.textlength(badge, self.f_tiny)) + 20
+            bx, by = 30, 40
+            draw.rounded_rectangle([(bx, by),(bx+bw, by+22)], 6,
+                                   fill=(ACCENT[0],ACCENT[1],ACCENT[2],90))
+            draw.rounded_rectangle([(bx, by),(bx+bw, by+22)], 6,
+                                   outline=(*ACCENT, 180), width=1)
+            draw.text((bx+10, by+4), badge, font=self.f_tiny, fill=WHITE)
 
-            # ── Song title (1 or 2 lines) ────────────────────────────────────
-            raw_title = _strip_html(song.title or "Unknown")
-            line1, line2 = self._wrap_title(raw_title, max_line=26)
+            # ── Title ─────────────────────────────────────────────────────────
+            raw   = _strip(song.title or "Unknown")
+            l1,l2 = self._wrap(raw, 26)
+            ty = 80
+            draw.text((30, ty), l1, font=self.f_title, fill=WHITE)
+            if l2:
+                draw.text((30, ty+44), l2, font=self.f_title2, fill=WHITE)
+                ty += 44
+            ty += 48
 
-            if line2:
-                draw.text((32, 60),  line1, font=self.font_title,  fill=WHITE)
-                draw.text((32, 98),  line2, font=self.font_title2, fill=WHITE)
-                y_after_title = 136
-            else:
-                draw.text((32, 68), line1, font=self.font_title, fill=WHITE)
-                y_after_title = 114
+            # ── Thin accent separator ─────────────────────────────────────────
+            draw.rectangle([(30, ty),(420, ty+1)], fill=(*ACCENT, 130))
+            ty += 10
 
-            draw.rectangle([(32, y_after_title), (520, y_after_title + 2)], fill=GOLD_DIM)
+            # ── Channel & views ───────────────────────────────────────────────
+            ch = _strip(song.channel_name or "")[:32]
+            vw = _strip(song.view_count or "")
+            if ch:
+                draw.text((30, ty), ch, font=self.f_sub, fill=TEXT_SEC)
+                ty += 28
+            if vw:
+                draw.text((30, ty), f"{vw} views", font=self.f_meta, fill=TEXT_DIM)
+                ty += 26
 
-            # ── Channel + views ──────────────────────────────────────────────
-            channel = _strip_html(song.channel_name or "")[:30]
-            views   = _strip_html(song.view_count or "")
-            if channel:
-                draw.text((32, y_after_title + 10), channel, font=self.font_sub, fill=PURPLE_LIGHT)
-            if views:
-                draw.text((32, y_after_title + 40), f"👁  {views}", font=self.font_meta, fill=TEXT_DIM)
-
-            # ── Duration ─────────────────────────────────────────────────────
-            dur_y = y_after_title + 76
-            draw.text((32, dur_y), f"⏱  {song.duration}", font=self.font_meta, fill=WHITE)
+            # ── Duration + type pill ──────────────────────────────────────────
+            ty += 6
+            dur_txt  = f"  {song.duration}  "
+            type_txt = "  VIDEO  " if song.video else "  AUDIO  "
+            for txt, col in [(dur_txt, (50,30,90)), (type_txt, (ACCENT[0],ACCENT[1],ACCENT[2]))]:
+                tw = int(draw.textlength(txt, self.f_badge)) + 4
+                draw.rounded_rectangle([(30, ty),(30+tw, ty+24)], 6, fill=col)
+                draw.text((30+4, ty+4), txt.strip(), font=self.f_badge, fill=WHITE)
+                ty += 30
 
             # ── Requested by ─────────────────────────────────────────────────
             if song.user:
-                req_name = _strip_html(song.user)[:28]
-                draw.text((32, dur_y + 26), f"👤  {req_name}", font=self.font_meta, fill=GOLD)
+                ty += 4
+                draw.text((30, ty), f"Requested by  {_strip(song.user)[:28]}",
+                          font=self.f_meta, fill=GOLD)
 
-            # ── Type badge ────────────────────────────────────────────────────
-            badge_text = "🎬  VIDEO" if song.video else "🎵  AUDIO"
-            badge_y = dur_y + 62
-            bw = int(draw.textlength(badge_text, font=self.font_badge)) + 20
-            draw.rounded_rectangle([(32, badge_y), (32 + bw, badge_y + 28)], radius=7, fill=BADGE_BG)
-            draw.rounded_rectangle([(32, badge_y), (32 + bw, badge_y + 28)], radius=7, outline=GOLD_DIM, width=1)
-            draw.text((42, badge_y + 5), badge_text, font=self.font_badge, fill=GOLD)
+            # ── Album art (circle) with glow ──────────────────────────────────
+            cx, cy, d = self.ART_X, self.ART_Y, self.ART_D
+            # Glow ring
+            for r in range(8, 0, -1):
+                alpha = int(55 * (r / 8))
+                draw.ellipse(
+                    [(cx-d//2-r, cy-d//2-r),(cx+d//2+r, cy+d//2+r)],
+                    outline=(*ACCENT, alpha), width=2
+                )
+            # Shadow
+            sh = Image.new("RGBA", (d+40, d+40), (0,0,0,0))
+            ImageDraw.Draw(sh).ellipse([(14,14),(d+14,d+14)], fill=(*SHADOW,120))
+            sh = sh.filter(ImageFilter.GaussianBlur(16))
+            bg.paste(sh, (cx-d//2-20, cy-d//2-20), sh)
+            # Art
+            art = self._circle_art(tmp, d)
+            bg.paste(art, (cx-d//2, cy-d//2), art)
+            # Outer ring on art
+            draw.ellipse([(cx-d//2-2, cy-d//2-2),(cx+d//2+2, cy+d//2+2)],
+                         outline=(*GOLD, 180), width=2)
 
-            # ── Progress bar ─────────────────────────────────────────────────
-            bar_y  = H - 72
-            bar_x0, bar_x1, bar_h = 32, W - 32, 6
-            draw.rounded_rectangle([(bar_x0, bar_y), (bar_x1, bar_y + bar_h)], radius=3, fill=BAR_BG)
-            fill_end = bar_x0 + 36
-            draw.rounded_rectangle([(bar_x0, bar_y), (fill_end, bar_y + bar_h)], radius=3, fill=BAR_FG)
-            kx = fill_end
-            draw.ellipse([(kx - 5, bar_y - 3), (kx + 5, bar_y + bar_h + 3)], fill=GOLD)
-            draw.text((bar_x0, bar_y + 11), "0:00", font=self.font_meta, fill=WHITE)
-            dur_w = int(draw.textlength(song.duration, font=self.font_meta))
-            draw.text((bar_x1 - dur_w, bar_y + 11), song.duration, font=self.font_meta, fill=WHITE)
+            # ── Progress bar (bottom band) ────────────────────────────────────
+            band_y = H - 80
+            draw.rectangle([(0, band_y),(W, H)], fill=(0,0,0,120))
+            bx0, bx1, by0 = 30, W-30, band_y+28
+            bh = 5
+            # Track
+            draw.rounded_rectangle([(bx0,by0),(bx1,by0+bh)], 3, fill=BAR_TRACK)
+            # Fill (small dot at start = "just started")
+            fill_x = bx0 + 44
+            draw.rounded_rectangle([(bx0,by0),(fill_x,by0+bh)], 3, fill=BAR_FILL)
+            # Knob
+            kx = fill_x
+            draw.ellipse([(kx-5,by0-4),(kx+5,by0+bh+4)], fill=GOLD)
+            # Times
+            draw.text((bx0, by0+12), "0:00", font=self.f_tiny, fill=TEXT_SEC)
+            dw = int(draw.textlength(song.duration, self.f_tiny))
+            draw.text((bx1-dw, by0+12), song.duration, font=self.f_tiny, fill=TEXT_SEC)
 
-            # ── Album-art (right side) with drop-shadow ───────────────────────
-            art_x, art_y = 596, 96
-            sh = Image.new("RGBA", (self.ART_W + 24, self.ART_H + 24), (0, 0, 0, 0))
-            ImageDraw.Draw(sh).rounded_rectangle(
-                [(12, 12), (self.ART_W + 12, self.ART_H + 12)],
-                radius=self.ART_R, fill=(*SHADOW_COLOR, 130),
-            )
-            sh = sh.filter(ImageFilter.GaussianBlur(14))
-            bg.paste(sh, (art_x - 12, art_y - 12), sh)
-            art = self._make_art(temp, self.ART_W, self.ART_H, self.ART_R)
-            bg.paste(art, (art_x, art_y), art)
+            # ── Gold bottom bar ───────────────────────────────────────────────
+            draw.rectangle([(0,H-3),(W,H)], fill=GOLD)
 
-            # ── Save ──────────────────────────────────────────────────────────
-            bg.convert("RGB").save(output, quality=95)
-
-            # Explicitly close all PIL images to free RAM immediately
-            for _img in (raw, blur, dark, tint, bg, art):
-                try:
-                    _img.close()
-                except Exception:
-                    pass
+            # ── Save & cleanup ────────────────────────────────────────────────
+            bg.convert("RGB").save(out, quality=94)
+            for img in (bg, art, sh): 
+                try: img.close()
+                except: pass
             gc.collect()
-
-            try:
-                os.remove(temp)
-            except OSError:
-                pass
-            return output
-
+            try: os.remove(tmp)
+            except: pass
+            return out
         except Exception:
             return config.DEFAULT_THUMB

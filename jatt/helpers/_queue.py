@@ -4,6 +4,7 @@
 
 
 from collections import defaultdict, deque
+import random
 from typing import Union
 
 from ._dataclass import Media, Track
@@ -96,7 +97,16 @@ class Queue:
         self.queues[chat_id] = deque(lst)
         return True
 
-    def remove_item(self, chat_id: int, pos: int) -> "MediaItem | None":
+    def shuffle(self, chat_id: int) -> int:
+        """Shuffle all queued tracks except currently playing. Returns shuffled count."""
+        q = self.queues[chat_id]
+        if len(q) < 2:
+            return 0
+        current = q[0]
+        rest = list(q)[1:]
+        random.shuffle(rest)
+        self.queues[chat_id] = deque([current] + rest)
+        return len(rest)
         """Remove and return the queued track at pos (1-indexed, excludes currently playing).
         Returns None if pos is out of range."""
         q = self.queues[chat_id]
