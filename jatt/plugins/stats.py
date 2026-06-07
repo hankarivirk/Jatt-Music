@@ -15,7 +15,7 @@ from jatt import app, config, db, lang, userbot
 from jatt.plugins import all_modules
 
 
-@app.on_message(filters.command(["stats"]) & filters.group & ~app.bl_users)
+@app.on_message(filters.command(["stats"]) & ~app.bl_users)
 @lang.language()
 async def _stats(_, m: types.Message):
     sent = await m.reply_photo(
