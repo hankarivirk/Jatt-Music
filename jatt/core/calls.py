@@ -97,6 +97,7 @@ class TgCall(PyTgCalls):
                 await db.add_call(chat_id)
                 # Save to play history (non-blocking — never stall playback)
                 asyncio.create_task(self._save_history(chat_id, media))
+                asyncio.create_task(self._prefetch_next(chat_id))
 
                 text = _lang["play_media"].format(
                     media.url,
@@ -151,8 +152,42 @@ class TgCall(PyTgCalls):
             logger.error(f"Unexpected play_media error in {chat_id}: {e}", exc_info=True)
             asyncio.create_task(self._safe_play_next(chat_id))
 
+    async def set_volume(self, chat_id: int, volume: int) -> None:
+        client = await db.get_assistant(chat_id)
+        await client.change_volume_call(chat_id, volume)
+        await db.set_volume(chat_id, volume)
+
     @staticmethod
-    async def _save_history(chat_id: int, media: Media | Track) -> None:
+    async def _save_history(chat_id: int, media: "Media | Track") -> None:
+        try:
+            await db.add_history(
+                chat_id,
+                title=media.title or "Unknown",
+                url=media.url or "",
+                duration=media.duration,
+                user=media.user or "Unknown",
+            )
+            if media.url:
+                await db.increment_track(chat_id, media.title or "Unknown", media.url)
+        except Exception:
+            pass
+
+    async def _prefetch_next(self, chat_id: int) -> None:
+        """Pre-download the next queued track while current plays — zero-gap playback."""
+        try:
+            q = list(queue.queues.get(chat_id, []))
+            if len(q) < 2:
+                return
+            nxt = q[1]
+            if getattr(nxt, "file_path", None):
+                return  # already cached
+            if not getattr(nxt, "id", None):
+                return
+            path = await yt.download(nxt.id, video=nxt.video)
+            if path:
+                nxt.file_path = path
+        except Exception:
+            pass
         try:
             await db.add_history(
                 chat_id,

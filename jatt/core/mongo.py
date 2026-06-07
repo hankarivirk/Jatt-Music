@@ -54,6 +54,8 @@ class MongoDB:
         self.usersdb = self.db.users
 
         self.historydb = self.db.history
+        self.topdb     = self.db.top_tracks
+        self.botdb     = self.db.bot_settings
 
         self.prefix: dict[int, str] = {}
 
@@ -354,6 +356,53 @@ class MongoDB:
         await self.historydb.delete_one({"_id": chat_id})
 
     # PREFIX METHODS
+    # VOLUME METHODS
+    _vol_cache: dict[int, int] = {}
+
+    async def get_volume(self, chat_id: int) -> int:
+        if chat_id in self._vol_cache:
+            return self._vol_cache[chat_id]
+        doc = await self.chatsdb.find_one({"_id": chat_id})
+        vol = doc.get("volume", 100) if doc else 100
+        self._vol_cache[chat_id] = vol
+        return vol
+
+    async def set_volume(self, chat_id: int, volume: int) -> None:
+        self._vol_cache[chat_id] = volume
+        await self.chatsdb.update_one(
+            {"_id": chat_id}, {"$set": {"volume": volume}}, upsert=True
+        )
+
+    # TOP TRACKS METHODS
+    async def increment_track(self, chat_id: int, title: str, url: str) -> None:
+        import hashlib
+        _id = hashlib.md5(f"{chat_id}:{url or title}".encode()).hexdigest()
+        await self.topdb.update_one(
+            {"_id": _id},
+            {"$inc": {"count": 1}, "$set": {"title": title, "url": url, "chat_id": chat_id}},
+            upsert=True,
+        )
+
+    async def get_top_tracks(self, chat_id: int, limit: int = 10) -> list:
+        cursor = self.topdb.find({"chat_id": chat_id}).sort("count", -1).limit(limit)
+        return await cursor.to_list(length=limit)
+
+    # MAINTENANCE METHODS
+    _maintenance: bool | None = None
+
+    async def get_maintenance(self) -> bool:
+        if self._maintenance is not None:
+            return self._maintenance
+        doc = await self.botdb.find_one({"_id": "maintenance"})
+        self._maintenance = bool(doc.get("on", False)) if doc else False
+        return self._maintenance
+
+    async def set_maintenance(self, status: bool) -> None:
+        self._maintenance = status
+        await self.botdb.update_one(
+            {"_id": "maintenance"}, {"$set": {"on": status}}, upsert=True
+        )
+
     async def get_prefix(self, chat_id: int) -> str:
         """Return the custom command prefix for a chat (default: '/')."""
         if chat_id not in self.prefix:
