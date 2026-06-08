@@ -97,6 +97,15 @@ class Queue:
         self.queues[chat_id] = deque(lst)
         return True
 
+    def skipto(self, chat_id: int, pos: int) -> "MediaItem | None":
+        """Make pos the new current track (1-indexed). Returns new current or None."""
+        q = self.queues[chat_id]
+        if pos < 1 or pos >= len(q):
+            return None
+        lst = list(q)
+        self.queues[chat_id] = deque(lst[pos:])
+        return lst[pos]
+
     def shuffle(self, chat_id: int) -> int:
         """Shuffle all queued tracks except currently playing. Returns shuffled count."""
         q = self.queues[chat_id]
