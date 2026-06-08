@@ -3,12 +3,14 @@
 # This file is part of JattMusicBot
 
 
+import asyncio
 from pathlib import Path
 
 from pyrogram import filters, types
 
 from jatt import jatt, app, config, db, lang, queue, tg, yt
 from jatt.helpers import buttons, utils
+from jatt.helpers._admins import is_admin
 from jatt.helpers._play import checkUB
 
 
@@ -85,6 +87,27 @@ async def play_hndlr(
             m.lang["play_duration_limit"].format(config.DURATION_LIMIT // 60)
         )
 
+    # Per-group duration limit override
+    chat_limit = await db.get_setlimit(m.chat.id)
+    if chat_limit and file.duration_sec > chat_limit * 60:
+        return await sent.edit_text(m.lang["play_duration_limit"].format(chat_limit))
+
+    # Local ban check
+    if await db.is_local_banned(m.chat.id, m.from_user.id):
+        return await sent.edit_text(m.lang["localban_blocked"])
+
+    # Queue lock — only admins/authorized can add
+    if not force and await db.get_queuelock(m.chat.id):
+        if not (await is_admin(m.chat.id, m.from_user.id)
+                or m.from_user.id in app.sudoers
+                or await db.is_auth(m.chat.id, m.from_user.id)):
+            return await sent.edit_text(m.lang["queuelock_blocked"])
+
+    # Queue size cap
+    q_max = await db.get_queue_max(m.chat.id)
+    if not force and len(queue.get_queue(m.chat.id)) >= q_max:
+        return await sent.edit_text(m.lang["play_queue_full"].format(q_max))
+
     if await db.is_logger():
         await utils.play_log(m, sent.link, file.title, file.duration)
 
@@ -116,7 +139,6 @@ async def play_hndlr(
             return
 
     if not file.file_path:
-        # Check all possible cached extensions before re-downloading
         cached = None
         if video:
             _check = (f"downloads/{file.id}.mp4",)
@@ -135,7 +157,16 @@ async def play_hndlr(
             file.file_path = cached
         else:
             await sent.edit_text(m.lang["play_downloading"])
-            file.file_path = await yt.download(file.id, video=video)
+            # Parallel: download + ensure assistant is assigned simultaneously
+            file.file_path, _ = (
+                await asyncio.gather(
+                    yt.download(file.id, video=video),
+                    db.get_assistant(m.chat.id),
+                    return_exceptions=True,
+                )
+            )[:2]
+            if isinstance(file.file_path, Exception):
+                file.file_path = None
 
     await jatt.play_media(chat_id=m.chat.id, message=sent, media=file)
     if not tracks:
