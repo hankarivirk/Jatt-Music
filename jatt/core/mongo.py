@@ -53,9 +53,18 @@ class MongoDB:
         self.users = []
         self.usersdb = self.db.users
 
-        self.historydb = self.db.history
-        self.topdb     = self.db.top_tracks
-        self.botdb     = self.db.bot_settings
+        self.historydb     = self.db.history
+        self.topdb         = self.db.top_tracks
+        self.botdb         = self.db.bot_settings
+        self.statsdb       = self.db.play_stats
+        self.localbansdb   = self.db.local_bans
+
+        # in-memory caches for chat settings
+        self._setlimit:   dict[int, int]  = {}
+        self._queuemax:   dict[int, int]  = {}
+        self._queuelock:  dict[int, bool] = {}
+        self._autoplay:   dict[int, bool] = {}
+        self._localbans:  dict[int, set]  = {}
 
         self.prefix: dict[int, str] = {}
 
@@ -402,6 +411,95 @@ class MongoDB:
         await self.botdb.update_one(
             {"_id": "maintenance"}, {"$set": {"on": status}}, upsert=True
         )
+
+    # ── USER PLAY STATS ───────────────────────────────────────────────────────
+    async def add_user_play(self, chat_id: int, user_id: int) -> None:
+        _id = f"{chat_id}:{user_id}"
+        await self.statsdb.update_one(
+            {"_id": _id},
+            {"$inc": {"count": 1}, "$set": {"chat_id": chat_id, "user_id": user_id}},
+            upsert=True,
+        )
+
+    async def get_user_plays(self, chat_id: int, user_id: int) -> int:
+        doc = await self.statsdb.find_one({"_id": f"{chat_id}:{user_id}"})
+        return doc.get("count", 0) if doc else 0
+
+    async def get_chat_top_requesters(self, chat_id: int, limit: int = 10) -> list:
+        cursor = self.statsdb.find({"chat_id": chat_id}).sort("count", -1).limit(limit)
+        return await cursor.to_list(length=limit)
+
+    async def get_global_play_count(self) -> int:
+        result = await self.statsdb.aggregate(
+            [{"$group": {"_id": None, "total": {"$sum": "$count"}}}]
+        ).to_list(length=1)
+        return result[0]["total"] if result else 0
+
+    # ── CHAT SETTINGS ─────────────────────────────────────────────────────────
+    async def get_setlimit(self, chat_id: int) -> int:
+        if chat_id not in self._setlimit:
+            doc = await self.chatsdb.find_one({"_id": chat_id})
+            self._setlimit[chat_id] = int(doc.get("setlimit", 0)) if doc else 0
+        return self._setlimit[chat_id]
+
+    async def set_chat_limit(self, chat_id: int, mins: int) -> None:
+        self._setlimit[chat_id] = mins
+        await self.chatsdb.update_one({"_id": chat_id}, {"$set": {"setlimit": mins}}, upsert=True)
+
+    async def get_queue_max(self, chat_id: int) -> int:
+        if chat_id not in self._queuemax:
+            doc = await self.chatsdb.find_one({"_id": chat_id})
+            self._queuemax[chat_id] = int(doc.get("queuemax", 20)) if doc else 20
+        return self._queuemax[chat_id]
+
+    async def set_queue_max(self, chat_id: int, n: int) -> None:
+        self._queuemax[chat_id] = n
+        await self.chatsdb.update_one({"_id": chat_id}, {"$set": {"queuemax": n}}, upsert=True)
+
+    async def get_queuelock(self, chat_id: int) -> bool:
+        if chat_id not in self._queuelock:
+            doc = await self.chatsdb.find_one({"_id": chat_id})
+            self._queuelock[chat_id] = bool(doc.get("queuelock", False)) if doc else False
+        return self._queuelock[chat_id]
+
+    async def set_queuelock(self, chat_id: int, status: bool) -> None:
+        self._queuelock[chat_id] = status
+        await self.chatsdb.update_one({"_id": chat_id}, {"$set": {"queuelock": status}}, upsert=True)
+
+    async def get_autoplay(self, chat_id: int) -> bool:
+        if chat_id not in self._autoplay:
+            doc = await self.chatsdb.find_one({"_id": chat_id})
+            self._autoplay[chat_id] = bool(doc.get("autoplay", False)) if doc else False
+        return self._autoplay[chat_id]
+
+    async def set_autoplay(self, chat_id: int, status: bool) -> None:
+        self._autoplay[chat_id] = status
+        await self.chatsdb.update_one({"_id": chat_id}, {"$set": {"autoplay": status}}, upsert=True)
+
+    # ── LOCAL BAN ─────────────────────────────────────────────────────────────
+    async def _load_local_bans(self, chat_id: int) -> set:
+        if chat_id not in self._localbans:
+            doc = await self.localbansdb.find_one({"_id": chat_id})
+            self._localbans[chat_id] = set(doc.get("users", [])) if doc else set()
+        return self._localbans[chat_id]
+
+    async def is_local_banned(self, chat_id: int, user_id: int) -> bool:
+        return user_id in await self._load_local_bans(chat_id)
+
+    async def local_ban(self, chat_id: int, user_id: int) -> None:
+        bans = await self._load_local_bans(chat_id)
+        bans.add(user_id)
+        await self.localbansdb.update_one(
+            {"_id": chat_id}, {"$addToSet": {"users": user_id}}, upsert=True
+        )
+
+    async def local_unban(self, chat_id: int, user_id: int) -> None:
+        bans = await self._load_local_bans(chat_id)
+        bans.discard(user_id)
+        await self.localbansdb.update_one({"_id": chat_id}, {"$pull": {"users": user_id}})
+
+    async def get_local_bans(self, chat_id: int) -> list:
+        return list(await self._load_local_bans(chat_id))
 
     async def get_prefix(self, chat_id: int) -> str:
         """Return the custom command prefix for a chat (default: '/')."""
