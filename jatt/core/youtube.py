@@ -11,7 +11,7 @@ import asyncio
 import aiohttp
 from pathlib import Path
 
-from py_yt import Playlist, VideosSearch
+from py_yt import VideosSearch
 
 from jatt import logger
 from jatt.helpers import Track, utils
@@ -131,26 +131,49 @@ class YouTube:
             )
         return None
 
-    async def playlist(self, limit: int, user: str, url: str, video: bool) -> list[Track | None]:
+    async def playlist(self, limit: int, user: str, url: str, video: bool) -> list:
         tracks = []
-        try:
-            plist = await Playlist.get(url)
-            for data in plist["videos"][:limit]:
-                track = Track(
-                    id=data.get("id"),
-                    channel_name=data.get("channel", {}).get("name", ""),
-                    duration=data.get("duration"),
-                    duration_sec=utils.to_seconds(data.get("duration")),
-                    title=data.get("title")[:25],
-                    thumbnail=data.get("thumbnails")[-1].get("url").split("?")[0],
-                    url=data.get("link").split("&list=")[0],
+        cookie = self.get_cookies()
+        ydl_opts = {
+            "quiet": True, "no_warnings": True, "extract_flat": "in_playlist",
+            "skip_download": True, "ignoreerrors": True,
+            "cookiefile": cookie, "nocheckcertificate": True,
+            "playlistend": limit if limit > 0 else None,
+        }
+        def _extract():
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                try:
+                    info = ydl.extract_info(url, download=False)
+                    return info.get("entries", []) if info else []
+                except Exception:
+                    return []
+        entries = await asyncio.to_thread(_extract)
+        for e in entries:
+            if not e or not e.get("id"):
+                continue
+            dur = e.get("duration") or 0
+            try:
+                tracks.append(Track(
+                    id=e["id"],
+                    title=(e.get("title") or "Unknown")[:50],
+                    channel_name=e.get("uploader") or e.get("channel") or "",
+                    duration=utils.seconds_to_str(int(dur)),
+                    duration_sec=int(dur),
+                    thumbnail=e.get("thumbnail") or "",
+                    url=f"https://www.youtube.com/watch?v={e['id']}",
                     user=user,
-                    view_count="",
                     video=video,
-                )
-                tracks.append(track)
-        except Exception:
-            pass
+                ))
+            except Exception:
+                continue
+        return tracks
+
+    async def mix(self, video_id: str, user: str, video: bool, limit: int = 25) -> list:
+        url = f"https://www.youtube.com/watch?v={video_id}&list=RD{video_id}"
+        tracks = await self.playlist(limit, user, url, video)
+        if not tracks:
+            track = await self.search(video_id, 0, video=video)
+            return [track] if track else []
         return tracks
 
     async def download(self, video_id: str, video: bool = False) -> str | None:
