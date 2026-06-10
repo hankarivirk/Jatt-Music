@@ -58,6 +58,7 @@ class MongoDB:
         self.botdb         = self.db.bot_settings
         self.statsdb       = self.db.play_stats
         self.localbansdb   = self.db.local_bans
+        self.gamedb        = self.db.game_scores
 
         # in-memory caches for chat settings
         self._setlimit:   dict[int, int]  = {}
@@ -500,6 +501,25 @@ class MongoDB:
 
     async def get_local_bans(self, chat_id: int) -> list:
         return list(await self._load_local_bans(chat_id))
+
+    async def get_chat_play_count(self, chat_id: int) -> int:
+        result = await self.statsdb.aggregate(
+            [{"$match": {"chat_id": chat_id}},
+             {"$group": {"_id": None, "total": {"$sum": "$count"}}}]
+        ).to_list(length=1)
+        return result[0]["total"] if result else 0
+
+    async def add_game_score(self, chat_id: int, user_id: int, points: int) -> None:
+        _id = f"{chat_id}:{user_id}"
+        await self.gamedb.update_one(
+            {"_id": _id},
+            {"$inc": {"total": points}, "$set": {"chat_id": chat_id, "user_id": user_id}},
+            upsert=True,
+        )
+
+    async def get_game_leaderboard(self, chat_id: int, limit: int = 10) -> list:
+        cursor = self.gamedb.find({"chat_id": chat_id}).sort("total", -1).limit(limit)
+        return await cursor.to_list(length=limit)
 
     async def get_prefix(self, chat_id: int) -> str:
         """Return the custom command prefix for a chat (default: '/')."""
