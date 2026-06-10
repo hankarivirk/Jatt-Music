@@ -14,10 +14,12 @@ MediaItem = Union[Media, Track]
 
 class Queue:
     def __init__(self):
-        self.queues: dict[int, deque[MediaItem]] = defaultdict(deque)
+        self.queues:  dict[int, deque[MediaItem]] = defaultdict(deque)
+        self._history: dict[int, deque[MediaItem]] = defaultdict(lambda: deque(maxlen=10))
 
     def add(self, chat_id: int, item: MediaItem) -> int:
-        """Add an item to the queue and return its position (1-based)."""
+        if any(t.id == item.id for t in self.queues[chat_id]):
+            return len(self.queues[chat_id]) - 1
         self.queues[chat_id].append(item)
         return len(self.queues[chat_id]) - 1
 
@@ -49,14 +51,27 @@ class Queue:
         return self.queues[chat_id][0] if self.queues[chat_id] else None
 
     def get_next(self, chat_id: int, check: bool = False) -> MediaItem | None:
+        q = self.queues[chat_id]
+        if check:
+            return q[1] if len(q) > 1 else None
+        if not q:
+            return None
+        self._history[chat_id].append(q[0])
+        q.popleft()
+        return q[0] if q else None
+
+    def get_previous(self, chat_id: int) -> MediaItem | None:
+        h = self._history[chat_id]
+        if not h:
+            return None
+        track = h.pop()
+        self.queues[chat_id].appendleft(track)
+        return track
         """Remove current item and return the next one, or None if empty."""
         if not self.queues[chat_id]:
             return None
         if check:
             return self.queues[chat_id][1] if len(self.queues[chat_id]) > 1 else None
-
-        self.queues[chat_id].popleft()
-        return self.queues[chat_id][0] if self.queues[chat_id] else None
 
     def get_queue(self, chat_id: int) -> list[MediaItem]:
         """Return the full queue including the currently playing item."""
