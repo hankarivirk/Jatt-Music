@@ -228,5 +228,10 @@
     "search_results": "⌕  Select a track:",
     "help_effects": "<b>Audio Effects</b>\n\n  <code>/speed [0.5-2.0]</code>  —  Playback speed\n  <code>/bass [0-10]</code>      —  Bass boost\n  <code>/nightcore</code>        —  Nightcore preset\n  <code>/mono</code>             —  Mono output\n  <code>/3d</code>               —  3D surround\n  <code>/reverb</code>           —  Reverb\n  <code>/cleareffects</code>  /ce  —  Remove all effects",
     "help_limits": "<b>Admin Limits</b>\n\n  <code>/setlimit [mins]</code>   —  Max duration\n  <code>/setqueue [n]</code>      —  Max queue size\n  <code>/queuelock</code>         —  Admin-only queue\n  <code>/autoplay</code>          —  Auto-queue toggle\n  <code>/localban [reply]</code>  —  Ban user from bot\n  <code>/localunban [reply]</code> — Unban user\n  <code>/localbans</code>         —  List local bans",
-    "help_game": "<b>Music Quiz</b>\n\n  <code>/startgame [genre] [rounds]</code>  —  Start quiz\n  <code>/stopgame</code>    —  End game\n  <code>/score</code>       —  Current scores\n  <code>/leaderboard</code> /lb  —  All-time top\n  <code>/genres</code>      —  List genres\n\n  <b>Genres</b>  —  punjabi, hindi, english, arabic, turkish, kpop, spanish"
+    "help_game": "<b>Music Quiz</b>\n\n  <code>/startgame [genre] [rounds]</code>  —  Start quiz\n  <code>/stopgame</code>    —  End game\n  <code>/score</code>       —  Current scores\n  <code>/leaderboard</code> /lb  —  All-time top\n  <code>/genres</code>      —  List genres\n\n  <b>Genres</b>  —  punjabi, hindi, english, arabic, turkish, kpop, spanish",
+    "mymix_no_seed": "▲  Play a track first, or provide a song name — <code>/mymix [song]</code>",
+    "mymix_loading": "⌕  Building your mix...",
+    "mymix_queued": "<b>My Mix  ·  {0} tracks queued</b>\n\n  ◈  Starting with  —  {1}",
+    "prev_empty": "◈  No previous track in history.",
+    "prev_loading": "↺  Going back to  <b>{0}</b>..."
 }
