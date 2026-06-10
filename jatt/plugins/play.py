@@ -18,9 +18,15 @@ def playlist_to_queue(chat_id: int, tracks: list) -> str:
     text = "<blockquote expandable>"
     for track in tracks:
         pos = queue.add(chat_id, track)
-        text += f"<b>{pos}.</b> {track.title}\n"
-    text = text[:1948] + "</blockquote>"
-    return text
+        if pos > 0:
+            text += f"<b>{pos}.</b> {track.title}\n"
+    return (text[:1948] + "</blockquote>")
+
+
+async def _bg_load_playlist(chat_id: int, tracks: list) -> None:
+    for track in tracks:
+        queue.add(chat_id, track)
+        await asyncio.sleep(0.1)
 
 @app.on_message(
     filters.command(["play", "playforce", "vplay", "vplayforce"])
@@ -131,11 +137,13 @@ async def play_hndlr(
                 ),
             )
             if tracks:
-                added = playlist_to_queue(m.chat.id, tracks)
+                added = playlist_to_queue(m.chat.id, tracks[:5])
                 await app.send_message(
                     chat_id=m.chat.id,
                     text=m.lang["playlist_queued"].format(len(tracks)) + added,
                 )
+                if len(tracks) > 5:
+                    asyncio.create_task(_bg_load_playlist(m.chat.id, tracks[5:]))
             return
 
     if not file.file_path:
@@ -171,8 +179,10 @@ async def play_hndlr(
     await jatt.play_media(chat_id=m.chat.id, message=sent, media=file)
     if not tracks:
         return
-    added = playlist_to_queue(m.chat.id, tracks)
+    added = playlist_to_queue(m.chat.id, tracks[:5])
     await app.send_message(
         chat_id=m.chat.id,
         text=m.lang["playlist_queued"].format(len(tracks)) + added,
     )
+    if len(tracks) > 5:
+        asyncio.create_task(_bg_load_playlist(m.chat.id, tracks[5:]))
