@@ -8,8 +8,8 @@ class Inline:
         self.ikm = types.InlineKeyboardMarkup
         self.ikb = types.InlineKeyboardButton
 
-    def cancel_dl(self, text) -> types.InlineKeyboardMarkup:
-        return self.ikm([[self.ikb(text=f"✗  {text}", callback_data="cancel_dl")]])
+    def cancel_dl(self, text):
+        return self.ikm([[self.ikb(f"✗  {text}", callback_data="cancel_dl")]])
 
     def controls(self, chat_id, status=None, timer=None, remove=False):
         kb = []
@@ -35,7 +35,7 @@ class Inline:
                 self.ikb("◀  Back",  callback_data="help back"),
                 self.ikb("✗  Close", callback_data="help close"),
             ]])
-        cbs = ["admins","auth","blist","lang","ping","play","queue","stats","sudo","effects","limits"]
+        cbs = ["admins","auth","blist","lang","ping","play","queue","stats","sudo","effects","limits","game"]
         btns = [self.ikb(_lang.get(f"help_{i}", cb.title()), callback_data=f"help {cb}")
                 for i, cb in enumerate(cbs)]
         rows = [btns[i:i+2] for i in range(0, len(btns), 2)]
@@ -44,15 +44,13 @@ class Inline:
     def lang_markup(self, _lang: str):
         langs = lang.get_languages()
         btns = [
-            self.ikb(
-                f"{'✓  ' if code == _lang else ''}{name}",
-                callback_data=f"lang_change {code}",
-            )
+            self.ikb(f"{'✓  ' if code == _lang else ''}{name}",
+                     callback_data=f"lang_change {code}")
             for code, name in langs.items()
         ]
         return self.ikm([btns[i:i+2] for i in range(0, len(btns), 2)])
 
-    def ping_markup(self, text: str):
+    def ping_markup(self, text):
         return self.ikm([[self.ikb(f"◈  {text}", url=config.SUPPORT_CHAT)]])
 
     def play_queued(self, chat_id, item_id, _text):
@@ -64,14 +62,13 @@ class Inline:
         return self.ikm([[self.ikb(icon, callback_data=f"controls {action} {chat_id} q")]])
 
     def settings_markup(self, lang, admin_only, cmd_delete, language, chat_id):
-        on  = "●  On"
-        off = "○  Off"
+        on, off = "●  On", "○  Off"
         return self.ikm([
-            [self.ikb("Play Mode",        callback_data="settings"),
-             self.ikb(on if admin_only else off, callback_data="settings play")],
-            [self.ikb("Delete Commands",  callback_data="settings"),
-             self.ikb(on if cmd_delete else off, callback_data="settings delete")],
-            [self.ikb("Language",         callback_data="settings"),
+            [self.ikb("Play Mode",       callback_data="settings"),
+             self.ikb(on if admin_only  else off, callback_data="settings play")],
+            [self.ikb("Delete Commands", callback_data="settings"),
+             self.ikb(on if cmd_delete  else off, callback_data="settings delete")],
+            [self.ikb("Language",        callback_data="settings"),
              self.ikb(lang_codes[language], callback_data="language")],
         ])
 
