@@ -1,14 +1,9 @@
-# Copyright (c) 2025 JattDevs
-# Licensed under the MIT License.
-# This file is part of JattMusicBot
-
 import asyncio
 
 from pyrogram import Client
 
 from jatt import config, logger
 
-# How often to ping each assistant to verify the connection (seconds)
 _KEEPALIVE_INTERVAL = 240
 
 
@@ -17,7 +12,7 @@ class Userbot(Client):
         self.clients = []
         clients = {"one": "SESSION1", "two": "SESSION2", "three": "SESSION3"}
         for key, string_key in clients.items():
-            name = f"AnonyUB{key[-1]}"
+            name = f"JattUB{key[-1]}"
             session = getattr(config, string_key)
             setattr(
                 self,
@@ -35,7 +30,7 @@ class Userbot(Client):
         client = clients[num]
         await client.start()
         try:
-            await client.send_message(config.LOGGER_ID, "Assistant Started")
+            await client.send_message(config.LOGGER_ID, f"🎵 Assistant {num} started")
         except Exception:
             raise SystemExit(f"Assistant {num} failed to send message in log group.")
 
@@ -44,14 +39,9 @@ class Userbot(Client):
         client.username = ub.me.username
         client.mention = ub.me.mention
         self.clients.append(client)
-        try:
-            await ub.join_chat("fallenx")
-        except Exception:
-            pass
         logger.info(f"Assistant {num} started as @{client.username}")
 
     async def _reconnect(self, client: Client, num: int) -> None:
-        """Attempt a clean stop → start cycle for a dropped assistant."""
         logger.warning(f"Assistant {num} appears offline — reconnecting...")
         try:
             await client.stop()
@@ -69,8 +59,7 @@ class Userbot(Client):
             logger.error(f"Assistant {num} reconnect failed: {e}")
 
     async def _keepalive(self) -> None:
-        """Periodically ping each assistant; reconnect if unresponsive."""
-        await asyncio.sleep(60)          # give everything time to settle first
+        await asyncio.sleep(60)
         while True:
             await asyncio.sleep(_KEEPALIVE_INTERVAL)
             sessions = []
@@ -95,15 +84,23 @@ class Userbot(Client):
             await self.boot_client(2, self.two)
         if config.SESSION3:
             await self.boot_client(3, self.three)
-        # Start background keepalive task
         asyncio.create_task(self._keepalive())
         logger.info("Assistant keepalive task started.")
 
     async def exit(self):
         if config.SESSION1:
-            await self.one.stop()
+            try:
+                await self.one.stop()
+            except Exception:
+                pass
         if config.SESSION2:
-            await self.two.stop()
+            try:
+                await self.two.stop()
+            except Exception:
+                pass
         if config.SESSION3:
-            await self.three.stop()
+            try:
+                await self.three.stop()
+            except Exception:
+                pass
         logger.info("Assistants stopped.")

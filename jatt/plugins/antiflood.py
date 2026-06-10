@@ -3,20 +3,23 @@ from pyrogram import filters, StopPropagation, types
 from jatt import app
 
 _cache: dict[tuple[int, int], list[float]] = {}
-WINDOW  = 5.0   # seconds
-MAX_OPS = 4     # max commands per window per user
+WINDOW  = 5.0
+MAX_OPS = 5
 
 WATCHED = [
-    "play","vplay","playforce","vplayforce",
-    "skip","pause","resume","stop","seek","seekback",
-    "queue","nowplaying","voteskip","volume","shuffle",
-    "move","remove","clearqueue","loop","history","top","save",
+    "play", "vplay", "playforce", "vplayforce",
+    "skip", "pause", "resume", "stop", "seek", "seekback",
+    "queue", "nowplaying", "voteskip", "volume", "shuffle",
+    "move", "remove", "clearqueue", "loop", "history", "top", "save",
+    "search", "mymix", "prev",
 ]
 
 
 @app.on_message(filters.group & filters.command(WATCHED), group=-2)
 async def _antiflood(_, m: types.Message):
     if not m.from_user:
+        return
+    if m.from_user.id in app.sudoers:
         return
     key = (m.chat.id, m.from_user.id)
     now = time.time()

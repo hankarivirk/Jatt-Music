@@ -1,8 +1,3 @@
-# Copyright (c) 2025 JattDevs
-# Licensed under the MIT License.
-# This file is part of JattMusicBot
-
-
 import re
 
 from pyrogram import errors, filters, types
@@ -80,7 +75,7 @@ async def _controls(_, query: types.CallbackQuery):
             await app.delete_messages(
                 chat_id=chat_id, message_ids=[m_id, media.message_id], revoke=True
             )
-            media.message_id = 0  # FIX: was None, must be int
+            media.message_id = 0
         except Exception:
             pass
 
@@ -92,7 +87,8 @@ async def _controls(_, query: types.CallbackQuery):
 
     elif action == "replay":
         media = queue.get_current(chat_id)
-        media.user = user
+        if media:
+            media.user = user
         await jatt.replay(chat_id)
         status = query.lang["replayed"]
         reply = query.lang["play_replayed"].format(user)
@@ -102,15 +98,32 @@ async def _controls(_, query: types.CallbackQuery):
         status = query.lang["stopped"]
         reply = query.lang["play_stopped"].format(user)
 
+    else:
+        return
+
     try:
         if action in ["skip", "replay", "stop"]:
             await query.message.reply_text(reply, quote=False)
             await query.message.delete()
-            return  # FIX: message is gone; editing would raise and waste an API call
+            return
+
+        msg = query.message
+        raw_text = ""
+        if msg.caption:
+            try:
+                raw_text = msg.caption.html
+            except Exception:
+                raw_text = msg.caption or ""
+        elif msg.text:
+            try:
+                raw_text = msg.text.html
+            except Exception:
+                raw_text = msg.text or ""
+
         mtext = re.sub(
             r"\n\n<blockquote>.*?</blockquote>",
             "",
-            query.message.caption.html or query.message.text.html,
+            raw_text,
             flags=re.DOTALL,
         )
         keyboard = buttons.controls(
@@ -141,8 +154,10 @@ async def _help(_, query: types.CallbackQuery):
         except Exception:
             return
 
+    key = f"help_{data[1]}"
+    text = query.lang.get(key, query.lang["help_menu"])
     await query.edit_message_text(
-        text=query.lang[f"help_{data[1]}"],
+        text=text,
         reply_markup=buttons.help_markup(query.lang, True),
     )
 

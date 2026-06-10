@@ -1,7 +1,3 @@
-# Copyright (c) 2025 JattDevs
-# Licensed under the MIT License.
-# This file is part of JattMusicBot
-
 from pyrogram import filters, types
 
 from jatt import app, db, lang, queue
@@ -26,16 +22,16 @@ async def _remove(_, m: types.Message):
         return await m.reply_text(m.lang["remove_usage"])
 
     q_list = list(queue.queues[m.chat.id])
-    queued_count = len(q_list) - 1  # excludes currently playing
+    queued_count = len(q_list) - 1
 
     if queued_count < 1:
         return await m.reply_text(m.lang["clearqueue_empty"])
 
-    removed = queue.remove_item(m.chat.id, pos)
+    removed = queue.remove(m.chat.id, pos)
     if removed is None:
         return await m.reply_text(
             m.lang["remove_invalid"].format(queued_count)
         )
 
-    title = (removed.title[:40] if removed.title else "Unknown")
+    title = removed.title[:40] if removed.title else "Unknown"
     await m.reply_text(m.lang["remove_done"].format(title, pos))

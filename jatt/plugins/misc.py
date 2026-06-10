@@ -1,8 +1,3 @@
-# Copyright (c) 2025 JattDevs
-# Licensed under the MIT License.
-# This file is part of JattMusicBot
-
-
 import time
 import asyncio
 
@@ -23,12 +18,14 @@ async def auto_leave():
         await asyncio.sleep(3600)
         for ub in userbot.clients:
             try:
-                chats = [dialog.chat.id async for dialog in ub.get_dialogs()
-                            if dialog.chat.type in [
-                                enums.ChatType.GROUP, enums.ChatType.SUPERGROUP,
-                            ]][-20:]
+                chats = [
+                    dialog.chat.id async for dialog in ub.get_dialogs()
+                    if dialog.chat.type in [
+                        enums.ChatType.GROUP, enums.ChatType.SUPERGROUP,
+                    ]
+                ][-20:]
                 for chat in chats:
-                    if chat in [app.logger, -1001686672798, -1001549206010]:
+                    if chat == app.logger:
                         continue
                     if chat in db.active_calls:
                         continue
@@ -71,15 +68,19 @@ async def update_timer(length=10, sleep=12):
                 timer = "—" * pos + "◉" + "—" * (length - pos - 1)
 
                 if remaining <= 30:
-                    next = queue.get_next(chat_id, check=True)
-                    if next and not next.file_path:
-                        next.file_path = await yt.download(next.id, video=next.video)
+                    nxt = queue.get_next(chat_id, check=True)
+                    if nxt and not nxt.file_path:
+                        nxt.file_path = await yt.download(nxt.id, video=nxt.video)
 
                 if remaining < 10:
                     remove = True
                 else:
                     if config.THUMB_GEN:
-                        timer = f"{time.strftime('%M:%S', time.gmtime(played))} | {timer} | -{time.strftime('%M:%S', time.gmtime(remaining))}"
+                        timer = (
+                            f"{time.strftime('%M:%S', time.gmtime(played))} "
+                            f"| {timer} | "
+                            f"-{time.strftime('%M:%S', time.gmtime(remaining))}"
+                        )
                     else:
                         timer = None
                     remove = False
@@ -108,7 +109,10 @@ async def vc_watcher(sleep=15):
             media = queue.get_current(chat_id)
             if not media:
                 continue
-            participants = await client.get_participants(chat_id)
+            try:
+                participants = await client.get_participants(chat_id)
+            except Exception:
+                continue
             if len(participants) < 2 and media.time > 30:
                 _lang = await lang.get_lang(chat_id)
                 try:
@@ -122,6 +126,8 @@ async def vc_watcher(sleep=15):
                     await jatt.stop(chat_id)
                     await sent.reply_text(_lang["auto_left"])
                 except errors.MessageIdInvalid:
+                    pass
+                except Exception:
                     pass
 
 

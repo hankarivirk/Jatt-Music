@@ -1,5 +1,3 @@
-# 🎵 Jatt Music Bot — Start Plugin
-
 import asyncio
 from pyrogram import enums, filters, types
 
