@@ -1,32 +1,29 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pyrogram import filters, types
 from jatt import app, db, jatt, lang, queue
-from jatt.helpers._admins import is_admin
+
 
 @app.on_message(filters.command(["schedule"]) & filters.group & ~app.bl_users)
 @lang.language()
 async def _schedule(_, m: types.Message):
-    # Usage: /schedule 14:30 song name
     if len(m.command) < 3:
         return await m.reply_text(m.lang["schedule_usage"])
     try:
-        t_str = m.command[1]
-        hh, mm = map(int, t_str.split(":"))
+        hh, mm = map(int, m.command[1].split(":"))
         assert 0 <= hh <= 23 and 0 <= mm <= 59
     except Exception:
         return await m.reply_text(m.lang["schedule_usage"])
 
     query = " ".join(m.command[2:])
-    now   = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
     target = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
     if target <= now:
-        target = target.replace(day=target.day + 1)
+        target += timedelta(days=1)
 
     delay = (target - now).total_seconds()
     mention = m.from_user.mention
-
-    await m.reply_text(m.lang["schedule_set"].format(query[:35], t_str))
+    await m.reply_text(m.lang["schedule_set"].format(query[:35], m.command[1]))
 
     async def _run():
         await asyncio.sleep(delay)
