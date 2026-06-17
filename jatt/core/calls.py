@@ -98,7 +98,8 @@ class TgCall(PyTgCalls):
             await client.play(chat_id=chat_id, stream=stream,
                               config=types.GroupCallConfig(auto_start=False))
             if not seek_time:
-                media.time = 1
+                if not getattr(media, "_replaying", False):
+                    media.time = 1
                 await db.add_call(chat_id)
                 asyncio.create_task(self._save_history(chat_id, media))
                 asyncio.create_task(self._prefetch_next(chat_id))
@@ -206,7 +207,9 @@ class TgCall(PyTgCalls):
         _lang = await lang.get_lang(chat_id)
         msg = await app.send_message(chat_id=chat_id, text=_lang["play_again"])
         media.message_id = msg.id
+        media._replaying = True
         await self.play_media(chat_id, msg, media)
+        media._replaying = False
 
     async def play_next(self, chat_id):
         if loop := await db.get_loop(chat_id):
