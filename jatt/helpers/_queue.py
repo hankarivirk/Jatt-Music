@@ -13,8 +13,6 @@ class Queue:
         self._history: dict[int, deque[MediaItem]] = defaultdict(lambda: deque(maxlen=10))
 
     def add(self, chat_id: int, item: MediaItem) -> int:
-        if any(t.id == item.id for t in self.queues[chat_id]):
-            return len(self.queues[chat_id]) - 1
         self.queues[chat_id].append(item)
         return len(self.queues[chat_id]) - 1
 
