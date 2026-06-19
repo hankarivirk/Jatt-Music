@@ -8,33 +8,39 @@ from jatt.helpers._play import checkUB
 @lang.language()
 @checkUB
 async def _mymix(_, m: types.Message):
-    sent = await m.reply_text(m.lang["play_searching"])
+    sent    = await m.reply_text(m.lang["play_searching"])
     mention = m.from_user.mention
 
-    seed_id = None
-    current = queue.get_current(m.chat.id)
-    if current and getattr(current, "id", None):
-        seed_id = current.id
+    seed_id  = None
+    seed_url = None
+    current  = queue.get_current(m.chat.id)
+
+    if current and getattr(current, "id", None) and yt.is_youtube_id(current.id):
+        seed_id  = current.id
+        seed_url = current.url or f"https://www.youtube.com/watch?v={seed_id}"
     elif len(m.command) >= 2:
         query = " ".join(m.command[1:])
         track = await yt.search(query, sent.id)
-        if track:
-            seed_id = track.id
+        if track and yt.is_youtube_id(track.id):
+            seed_id  = track.id
+            seed_url = track.url or f"https://www.youtube.com/watch?v={seed_id}"
 
     if not seed_id:
         return await sent.edit_text(m.lang["mymix_no_seed"])
 
     await sent.edit_text(m.lang["mymix_loading"])
-    tracks = await yt.mix(seed_id, mention, False, limit=config.PLAYLIST_LIMIT)
-    if not tracks:
-        return await sent.edit_text(m.lang["play_not_found"].format(config.SUPPORT_CHAT))
-
-    file = tracks[0]
-    file.message_id = sent.id
-    rest  = tracks[1:]
 
     if await db.is_local_banned(m.chat.id, m.from_user.id):
         return await sent.edit_text(m.lang["localban_blocked"])
+
+    tracks = await yt.mix(seed_id, mention, False, limit=config.PLAYLIST_LIMIT)
+
+    if not tracks:
+        return await sent.edit_text(m.lang["mymix_failed"])
+
+    file        = tracks[0]
+    file.message_id = sent.id
+    rest        = tracks[1:]
 
     pos = queue.add(m.chat.id, file)
     if pos != 0 or await db.get_call(m.chat.id):
