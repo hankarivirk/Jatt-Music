@@ -1,7 +1,3 @@
-# Copyright (c) 2025 JattDevs
-# Licensed under the MIT License.
-# This file is part of JattMusicBot
-
 import os
 import re
 import glob
@@ -10,37 +6,39 @@ import random
 import asyncio
 import aiohttp
 from pathlib import Path
+from typing import Callable
 
 from py_yt import VideosSearch
 
 from jatt import logger
 from jatt.helpers import Track, utils
 
-MAX_DOWNLOADS = 15          # max files to keep on disk
-MAX_CACHE_MB  = 200         # hard cap: delete oldest files if folder exceeds this
-
-# Audio extensions yt-dlp may produce (no postprocessor, raw download)
-_AUDIO_EXTS = ("webm", "opus", "m4a", "mp3")
+MAX_DOWNLOADS = 15
+MAX_CACHE_MB  = 200
+_AUDIO_EXTS   = ("webm", "opus", "m4a", "mp3")
+_YT_ID_RE     = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
 
 class YouTube:
     def __init__(self):
-        self.base = "https://www.youtube.com/watch?v="
-        self.cookies = []
-        self.checked = False
+        self.base       = "https://www.youtube.com/watch?v="
+        self.cookies    = []
+        self.checked    = False
         self.cookie_dir = "jatt/cookies"
-        self.warned = False
-        # ── Increase to 5 concurrent downloads (was 2) ──
-        self.sem = asyncio.Semaphore(5)
+        self.warned     = False
+        self.sem        = asyncio.Semaphore(5)
         self.regex = re.compile(
             r"(https?://)?(www\.|m\.|music\.)?"
             r"(youtube\.com/(watch\?v=|shorts/|playlist\?list=)|youtu\.be/)"
-            r"([A-Za-z0-9_-]{11}|PL[A-Za-z0-9_-]+)([&?][^\s]*)?"
+            r"([A-Za-z0-9_-]{11}|(?:PL|RD|RDCLAK|UU|FL|OL)[A-Za-z0-9_-]+)([&?][^\s]*)?"
         )
         self.iregex = re.compile(
             r"https?://(?:www\.|m\.|music\.)?(?:youtube\.com|youtu\.be)"
             r"(?!/(watch\?v=[A-Za-z0-9_-]{11}|shorts/[A-Za-z0-9_-]{11}"
-            r"|playlist\?list=PL[A-Za-z0-9_-]+|[A-Za-z0-9_-]{11}))\S*"
+            r"|playlist\?list=|[A-Za-z0-9_-]{11}))\S*"
+        )
+        self._playlist_url_re = re.compile(
+            r"(?:list=)((?:PL|RD|RDCLAK|UU|FL|OL)[A-Za-z0-9_-]+)"
         )
 
     def get_cookies(self):
@@ -82,23 +80,16 @@ class YouTube:
 
     def _cleanup_downloads(self):
         files = sorted(glob.glob("downloads/*"), key=os.path.getctime)
-
-        # Count-based: keep at most MAX_DOWNLOADS files
         if len(files) > MAX_DOWNLOADS:
             for f in files[:len(files) - MAX_DOWNLOADS]:
-                try:
-                    os.remove(f)
-                except Exception:
-                    pass
+                try: os.remove(f)
+                except Exception: pass
             files = sorted(glob.glob("downloads/*"), key=os.path.getctime)
-
-        # Size-based: if folder exceeds MAX_CACHE_MB, delete oldest until under limit
         total_mb = sum(os.path.getsize(f) for f in files if os.path.isfile(f)) / (1024 * 1024)
         while total_mb > MAX_CACHE_MB and files:
             try:
-                removed_size = os.path.getsize(files[0]) / (1024 * 1024)
+                total_mb -= os.path.getsize(files[0]) / (1024 * 1024)
                 os.remove(files[0])
-                total_mb -= removed_size
             except Exception:
                 pass
             files.pop(0)
@@ -108,6 +99,12 @@ class YouTube:
 
     def invalid(self, url: str) -> bool:
         return bool(re.match(self.iregex, url))
+
+    def is_playlist_url(self, url: str) -> bool:
+        return bool(self._playlist_url_re.search(url))
+
+    def is_youtube_id(self, vid: str) -> bool:
+        return bool(_YT_ID_RE.match(vid))
 
     async def search(self, query: str, m_id: int, video: bool = False) -> Track | None:
         try:
@@ -123,23 +120,64 @@ class YouTube:
                 duration=data.get("duration"),
                 duration_sec=utils.to_seconds(data.get("duration")),
                 message_id=m_id,
-                title=data.get("title")[:25],
-                thumbnail=data.get("thumbnails", [{}])[-1].get("url").split("?")[0],
+                title=(data.get("title") or "Unknown")[:50],
+                thumbnail=(data.get("thumbnails") or [{}])[-1].get("url", "").split("?")[0],
                 url=data.get("link"),
                 view_count=data.get("viewCount", {}).get("short"),
                 video=video,
             )
         return None
 
-    async def playlist(self, limit: int, user: str, url: str, video: bool) -> list:
-        tracks = []
-        cookie = self.get_cookies()
+    async def ytmusic_search(self, query: str, m_id: int, video: bool = False) -> Track | None:
+        cookie  = self.get_cookies()
+        ydl_opts = {
+            "quiet": True, "no_warnings": True, "skip_download": True,
+            "extract_flat": True, "nocheckcertificate": True,
+            "cookiefile": cookie,
+            "default_search": "https://music.youtube.com/search?q=",
+        }
+        def _search():
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                try:
+                    info = ydl.extract_info(f"ytsearch1:{query}", download=False)
+                    entries = (info or {}).get("entries", [])
+                    return entries[0] if entries else None
+                except Exception:
+                    return None
+        data = await asyncio.to_thread(_search)
+        if not data or not data.get("id"):
+            return await self.search(query, m_id, video)
+        dur = int(data.get("duration") or 0)
+        return Track(
+            id=data["id"],
+            channel_name=data.get("uploader") or data.get("channel") or "",
+            duration=utils.seconds_to_str(dur),
+            duration_sec=dur,
+            message_id=m_id,
+            title=(data.get("title") or "Unknown")[:50],
+            thumbnail=(data.get("thumbnail") or ""),
+            url=f"https://music.youtube.com/watch?v={data['id']}",
+            view_count=str(data.get("view_count") or ""),
+            video=video,
+        )
+
+    async def playlist(
+        self,
+        limit: int,
+        user: str,
+        url: str,
+        video: bool,
+        progress_cb: Callable[[int, int], None] | None = None,
+    ) -> list:
+        tracks  = []
+        cookie  = self.get_cookies()
         ydl_opts = {
             "quiet": True, "no_warnings": True, "extract_flat": "in_playlist",
             "skip_download": True, "ignoreerrors": True,
             "cookiefile": cookie, "nocheckcertificate": True,
             "playlistend": limit if limit > 0 else None,
         }
+
         def _extract():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 try:
@@ -147,18 +185,21 @@ class YouTube:
                     return info.get("entries", []) if info else []
                 except Exception:
                     return []
+
         entries = await asyncio.to_thread(_extract)
-        for e in entries:
+        total   = len([e for e in entries if e])
+
+        for i, e in enumerate(entries):
             if not e or not e.get("id"):
                 continue
-            dur = e.get("duration") or 0
             try:
+                dur = int(e.get("duration") or 0)
                 tracks.append(Track(
                     id=e["id"],
                     title=(e.get("title") or "Unknown")[:50],
                     channel_name=e.get("uploader") or e.get("channel") or "",
-                    duration=utils.seconds_to_str(int(dur)),
-                    duration_sec=int(dur),
+                    duration=utils.seconds_to_str(dur),
+                    duration_sec=dur,
                     thumbnail=e.get("thumbnail") or "",
                     url=f"https://www.youtube.com/watch?v={e['id']}",
                     user=user,
@@ -166,52 +207,81 @@ class YouTube:
                 ))
             except Exception:
                 continue
+
+            if progress_cb and (i + 1) % 10 == 0:
+                try: await progress_cb(len(tracks), total)
+                except Exception: pass
+
         return tracks
 
     async def mix(self, video_id: str, user: str, video: bool, limit: int = 25) -> list:
-        url = f"https://www.youtube.com/watch?v={video_id}&list=RD{video_id}"
-        tracks = await self.playlist(limit, user, url, video)
+        if not self.is_youtube_id(video_id):
+            return []
+
+        mix_url = f"https://www.youtube.com/watch?v={video_id}&list=RD{video_id}"
+        tracks  = await self.playlist(limit, user, mix_url, video)
+
+        if not tracks:
+            related_url = f"https://www.youtube.com/watch?v={video_id}"
+            cookie      = self.get_cookies()
+            ydl_opts    = {
+                "quiet": True, "no_warnings": True, "skip_download": True,
+                "extract_flat": True, "ignoreerrors": True,
+                "cookiefile": cookie, "nocheckcertificate": True,
+            }
+            def _related():
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    try:
+                        info = ydl.extract_info(related_url, download=False)
+                        return (info or {}).get("entries", [])
+                    except Exception:
+                        return []
+            entries = await asyncio.to_thread(_related)
+            for e in (entries or [])[:limit]:
+                if not e or not e.get("id"): continue
+                try:
+                    dur = int(e.get("duration") or 0)
+                    tracks.append(Track(
+                        id=e["id"],
+                        title=(e.get("title") or "Unknown")[:50],
+                        channel_name=e.get("uploader") or e.get("channel") or "",
+                        duration=utils.seconds_to_str(dur),
+                        duration_sec=dur,
+                        thumbnail=e.get("thumbnail") or "",
+                        url=f"https://www.youtube.com/watch?v={e['id']}",
+                        user=user, video=video,
+                    ))
+                except Exception:
+                    continue
+
         if not tracks:
             track = await self.search(video_id, 0, video=video)
             return [track] if track else []
+
         return tracks
 
     async def download(self, video_id: str, video: bool = False) -> str | None:
         url = self.base + video_id
         os.makedirs("downloads", exist_ok=True)
 
-        # ── Cache hit: check all possible audio extensions ──────────────
         if video:
             cached = f"downloads/{video_id}.mp4"
-            if Path(cached).exists():
-                return cached
+            if Path(cached).exists(): return cached
         else:
             for ext in _AUDIO_EXTS:
                 cached = f"downloads/{video_id}.{ext}"
-                if Path(cached).exists():
-                    return cached
+                if Path(cached).exists(): return cached
 
-        cookie = self.get_cookies()
-
-        # ── Shared yt-dlp options (tuned for speed) ──────────────────────
+        cookie   = self.get_cookies()
         base_opts = {
             "outtmpl": "downloads/%(id)s.%(ext)s",
-            "quiet": True,
-            "noplaylist": True,
-            "geo_bypass": True,
-            "no_warnings": True,
-            "overwrites": False,
-            "nocheckcertificate": True,
+            "quiet": True, "noplaylist": True, "geo_bypass": True,
+            "no_warnings": True, "overwrites": False, "nocheckcertificate": True,
             "cookiefile": cookie,
-            # ── Speed knobs ──
-            "concurrent_fragment_downloads": 4,   # was 1  → 4x faster on DASH
-            "buffersize": 16384,                   # was 1024
-            "http_chunk_size": 10485760,           # 10 MB chunks
-            "socket_timeout": 15,
-            "retries": 5,
-            "fragment_retries": 5,
-            "noresizebuffer": True,
-            "file_access_retries": 3,
+            "concurrent_fragment_downloads": 4,
+            "buffersize": 16384, "http_chunk_size": 10485760,
+            "socket_timeout": 15, "retries": 5, "fragment_retries": 5,
+            "noresizebuffer": True, "file_access_retries": 3,
         }
 
         if video:
@@ -225,9 +295,6 @@ class YouTube:
                 "merge_output_format": "mp4",
             }
         else:
-            # ── NO FFmpegExtractAudio postprocessor ──────────────────────
-            # Download raw webm/opus directly from YouTube.
-            # Skips the FFmpeg re-encode step → saves 2-5 seconds per song.
             ydl_opts = {
                 **base_opts,
                 "format": "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio",
@@ -237,8 +304,7 @@ class YouTube:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 try:
                     info = ydl.extract_info(url, download=True)
-                    if info:
-                        return ydl.prepare_filename(info)
+                    if info: return ydl.prepare_filename(info)
                 except (yt_dlp.utils.DownloadError, yt_dlp.utils.ExtractorError):
                     return None
                 except Exception as ex:
