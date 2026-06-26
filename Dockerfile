@@ -8,7 +8,6 @@ RUN apt-get update -y \
     && rm -rf /var/lib/apt/lists/* \
     && curl -fsSL https://deno.land/install.sh | sh
 
-
 ENV DENO_INSTALL="/root/.deno"
 ENV PATH="${DENO_INSTALL}/bin:${PATH}"
 
@@ -17,7 +16,11 @@ ENV PATH="/root/.local/bin:${PATH}"
 
 COPY pyproject.toml uv.lock ./
 
+# 1. Sync dependencies normally
 RUN uv sync --frozen
+
+# 2. Force uv to upgrade yt-dlp to the absolute latest version
+RUN uv pip install --upgrade yt-dlp
 
 COPY . .
 
