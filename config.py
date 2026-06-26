@@ -37,6 +37,9 @@ class Config:
             url for url in getenv("COOKIES_URL", "").split(" ")
             if url and "batbin.me" in url
         ]
+        self.YT_DLP_EXTRA_ARGS = getenv("YT_DLP_EXTRA_ARGS", "")
+        self.YT_PO_TOKEN = getenv("YT_PO_TOKEN", "")
+        self.YT_VISITOR_DATA = getenv("YT_VISITOR_DATA", "")
         self.DEFAULT_THUMB = getenv("DEFAULT_THUMB", "https://files.catbox.moe/62vskl.jpg")
         self.PING_IMG = getenv("PING_IMG", "https://files.catbox.moe/simj8t.jpg")
         self.START_IMG = getenv("START_IMG", "https://files.catbox.moe/0k1biy.jpg")
