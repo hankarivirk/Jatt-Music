@@ -1,6 +1,7 @@
 import os
 import re
 import glob
+import shlex
 import yt_dlp
 import random
 import asyncio
@@ -17,6 +18,30 @@ MAX_DOWNLOADS = 15
 MAX_CACHE_MB  = 200
 _AUDIO_EXTS   = ("webm", "opus", "m4a", "mp3")
 _YT_ID_RE     = re.compile(r"^[A-Za-z0-9_-]{11}$")
+
+
+def _parse_extra_args(raw: str) -> dict:
+    """Convert YT_DLP_EXTRA_ARGS string into yt-dlp option dict."""
+    opts = {}
+    if not raw:
+        return opts
+    tokens = shlex.split(raw)
+    i = 0
+    while i < len(tokens):
+        t = tokens[i]
+        if t == "--impersonate" and i + 1 < len(tokens):
+            opts["impersonate"] = tokens[i + 1]; i += 2
+        elif t == "--check-formats":
+            opts["check_formats"] = "selected"; i += 1
+        elif t == "--rm-cache-dir":
+            opts["rm_cache_dir"] = True; i += 1
+        elif t == "-4":
+            opts["source_address"] = "0.0.0.0"; i += 1
+        elif t == "-6":
+            opts["source_address"] = "::"; i += 1
+        else:
+            i += 1
+    return opts
 
 
 class YouTube:
@@ -272,7 +297,11 @@ class YouTube:
                 cached = f"downloads/{video_id}.{ext}"
                 if Path(cached).exists(): return cached
 
-        cookie   = self.get_cookies()
+        from jatt import config as _cfg
+        cookie       = self.get_cookies()
+        extra        = _parse_extra_args(getattr(_cfg, "YT_DLP_EXTRA_ARGS", ""))
+        po_token     = getattr(_cfg, "YT_PO_TOKEN", "")
+        visitor_data = getattr(_cfg, "YT_VISITOR_DATA", "")
         base_opts = {
             "outtmpl": "downloads/%(id)s.%(ext)s",
             "quiet": True, "noplaylist": True, "geo_bypass": True,
@@ -282,7 +311,15 @@ class YouTube:
             "buffersize": 16384, "http_chunk_size": 10485760,
             "socket_timeout": 15, "retries": 5, "fragment_retries": 5,
             "noresizebuffer": True, "file_access_retries": 3,
+            **extra,
         }
+        if po_token and visitor_data:
+            base_opts["extractor_args"] = {
+                "youtube": {
+                    "po_token": [f"web+{po_token}"],
+                    "visitor_data": [visitor_data],
+                }
+            }
 
         if video:
             ydl_opts = {
